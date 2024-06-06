@@ -174,6 +174,35 @@ def epsilon_averages(prima_facie_causes,df,effect):
 
 
     return eps_dict
+def structureDefinition(effect_names,A,E,windows_matrix):
+    f.write('STRUCTURE EVALUATION\n')
+    f.write('Effect;Cause;Eps\n')
+    cause_effect_dict=dict()
+    for e in effect_names:
+        prima_facie = list()
+        for a in A:
+            if (e != a):
+                if (primafacie(e, a, windows_matrix, E, True)):
+                    prima_facie.append(a)
+        eps_avg = epsilon_averages(prima_facie, windows_matrix, e)
+        max_eps = max(eps_avg.values())
+        new_causes = [key for key, value in eps_avg.items() if value == max_eps]
+        cause_effect_dict[e] = [(c, max_eps) for c in new_causes]
+    structureVisualisation(cause_effect_dict)
+    f.write('\n\n\n')
+
+    return cause_effect_dict
+def structureVisualisation(cause_effect_dict):
+    G = nx.Graph()
+
+    for effect, causes in cause_effect_dict.items():
+        ant = effect
+        for c in causes:
+            cons=c[0]
+            G.add_node(ant)
+            G.add_node(cons)
+            G.add_edge(ant, cons, weight=c[1])
+    graphVisualization(G,'PdFT_structure.pdf')
 
 
 def decisionTree(df,effect,features,f):
@@ -208,28 +237,26 @@ def apriori_ar(df):
     df_ar.to_csv('rules.csv', index=False)
     return df_ar
 
-
-def visualization(rules):
-    G = nx.Graph()
+def graphVisualization(G,name_fig):
+    fig, ax = plt.subplots(figsize=(12, 10))
     node_style = 'circle, draw, fill, inner sep=2pt'
-    col_ant = 'blue'
-    col_cons = 'grey'
+    for node in G.nodes():
+        G.nodes[node]['tex'] = '\\node[{}] ({})'.format(node_style, node)
+    pos = nx.spring_layout(G)
+    nx.draw(G, pos=pos, with_labels=True, node_size=4000, font_size=16, arrowsize=30, node_color='#D3FBFB',ax=ax, font_color="black", edge_color="black")
+    labels = nx.get_edge_attributes(G, 'weight')
+    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
+    plt.savefig(name_fig)
+    plt.close()
+def rulesVisualization(rules):
+    G = nx.Graph()
     for idx, rule in rules.iterrows():
         ant = str(rule['antecedents'])
         cons = str(rule['consequents'])
-        G.add_node(ant, color=col_ant, size=5000)
-        G.add_node(cons, color=col_cons, size=5000)
+        G.add_node(ant)
+        G.add_node(cons)
         G.add_edge(ant, cons, weight=round(rule['confidence'], 2))
-    for node in G.nodes():
-        G.nodes[node]['tex'] = '\\node[{}] ({})'.format(node_style, node)
-    edge_width = {e: "line width=1.5" for e in G.edges}
-    pos = nx.spring_layout(G)
-    plt.figure(figsize=(20, 10))
-    nx.draw(G, pos, with_labels=True, font_size=8, font_color='white', font_weight='bold', linewidths=5)
-    labels = nx.get_edge_attributes(G, 'weight')
-    nx.draw_networkx_edge_labels(G, pos, edge_labels=labels)
-    plt.savefig('association_rules.pdf')
-    plt.close()
+    graphVisualization(G,'association_rules.pdf')
 
 
 def filtering_rules(effect,causes,ar_df,window_matrix):
@@ -252,6 +279,25 @@ def filtering_rules(effect,causes,ar_df,window_matrix):
 
 
 
+def discoveringPredicates(effects_names,cause_effect_dict,rules,window_matrix):
+    f.write('\n\n\n\n\n\nPREDICATES EVALUATION\n')
+    f.write('Effect;Cause;Eps\n')
+    for e in effects_names:
+        new_causes = cause_effect_dict[e]
+        new_causes = [c[0] for c in new_causes]
+        window_matrix, composed_causes = filtering_rules(e, new_causes, rules, window_matrix)
+        '''
+
+                window_matrix = updatingWindowMatrix(window_matrix, 'OR', a, new_causes[j])
+                composed_causes.append(a + '_OR_' + new_causes[j])
+        '''
+        for c in composed_causes:
+            if (primafacie(e, c, window_matrix)):
+                new_causes.append(c)
+
+        eps_avg = epsilon_averages(new_causes, window_matrix, e)
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 3:
         configfile_name = sys.argv[1]
@@ -264,41 +310,14 @@ if __name__ == "__main__":
         caseIDs_col_name = eval(reader['DATASET']['caseID_col'])[0]
         timestamps_col_name = eval(reader['DATASET']['timestamp_col'])[0]
         f = open('results.txt', 'w')
-
-        #data = dataset(inference.source)
-        #data=combinations_dataset(data)
         A=E[activities_col_name].unique()
         window_matrix=windowMatrix(E)
-        #ar_items=association_rules_dataset(E)
         rules = apriori_ar(window_matrix)
-        visualization(rules)
+        rulesVisualization(rules)
+        cause_effect_dict=dict()
+        cause_effect_dict=structureDefinition(effects_names,A,E,window_matrix)
+        discoveringPredicates(effects_names, cause_effect_dict, rules, window_matrix)
 
-        for e in effects_names:
-            prima_facie = list()
-            for a in A:
-                if(e!=a):
-                    if(primafacie(e,a,window_matrix,E,True)):
-                        prima_facie.append(a)
-            f.write('Effect;Cause;Eps\n')
-            eps_avg = epsilon_averages(prima_facie, window_matrix, e)
-            #decisionTree(window_matrix, e, prima_facie, f)
-            max_eps=max(eps_avg.values())
-            new_causes=[key for key,value in eps_avg.items() if value==max_eps]
-            window_matrix,composed_causes=filtering_rules(e,new_causes,rules,window_matrix)
-            '''
-            for i, a in enumerate(new_causes):
-                for j in range(i+1,len(new_causes)):
-                    window_matrix = updatingWindowMatrix(window_matrix, 'AND', a, new_causes[j])
-                    composed_causes.append(a+'_AND_'+new_causes[j])
-                    window_matrix = updatingWindowMatrix(window_matrix, 'OR', a, new_causes[j])
-                    composed_causes.append(a + '_OR_' + new_causes[j])
-            '''
-            for c in composed_causes:
-                if(primafacie(e,c,window_matrix)):
-                    new_causes.append(c)
-            f.write('Composed Causes evaluation\n')
-            f.write('Effect;Cause;Eps\n')
-            eps_avg = epsilon_averages(new_causes, window_matrix, e)
 
 
 

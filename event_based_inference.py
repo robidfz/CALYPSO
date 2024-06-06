@@ -232,11 +232,16 @@ def visualization(rules):
     plt.close()
 
 
-def filtering_rules(effect,ar_df,window_matrix):
+def filtering_rules(effect,causes,ar_df,window_matrix):
     effect_list=list()
     effect_list.append(effect)
     composed_causes=list()
-    filtered_df=ar_df[ ar_df['consequents'].apply(lambda x: x==effect_list) ]['antecedents']
+    composed_causes_lists=list()
+    filtered_df=ar_df[ ar_df['consequents'].apply(lambda x: x==effect_list) ]
+    for c in filtered_df['antecedents'].values:
+        if(all(elem in causes for elem in c)):
+            composed_causes_lists.append(c)
+    filtered_df=filtered_df[ ar_df['antecedents'].apply(lambda x: x in composed_causes_lists) ]['antecedents']
     for row in filtered_df:
         cause1=row[0]
         for i in range(1,len(row)):
@@ -279,7 +284,7 @@ if __name__ == "__main__":
             #decisionTree(window_matrix, e, prima_facie, f)
             max_eps=max(eps_avg.values())
             new_causes=[key for key,value in eps_avg.items() if value==max_eps]
-            window_matrix,composed_causes=filtering_rules(e,rules,window_matrix)
+            window_matrix,composed_causes=filtering_rules(e,new_causes,rules,window_matrix)
             '''
             for i, a in enumerate(new_causes):
                 for j in range(i+1,len(new_causes)):

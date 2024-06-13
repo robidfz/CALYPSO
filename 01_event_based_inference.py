@@ -146,7 +146,7 @@ def windowMatrix(df):
     new_rows = pd.DataFrame(new_rows)
     window_matrix = pd.concat([window_matrix, new_rows], ignore_index=True)
     window_matrix.fillna(0, inplace=True)
-    window_matrix.to_csv('causalities_dataset.csv', index=False)
+    window_matrix.to_csv('windows_matrix.csv', index=False)
     return  window_matrix
 
 def updatingWindowMatrix(df,logic_operator,operand1,operand2):
@@ -444,7 +444,7 @@ if __name__ == "__main__":
         #activity_of_interest=['is_down','sigA>50']
         #mask=E[activities_col_name].apply(lambda x: ends_with_any(x, activity_of_interest))
         #E = E[mask]
-        #E = E[(~E[activities_col_name].str.endswith('has_failed_by_itself')) & (~E[activities_col_name].str.endswith('sigA>50'))]
+        E = E[(~E[activities_col_name].str.endswith('failed_by_itself')) ]
         f = open('results.txt', 'w')
         A=E[activities_col_name].unique()
         window_matrix=windowMatrix(E)

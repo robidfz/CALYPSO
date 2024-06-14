@@ -63,7 +63,7 @@ def parsing_strings(df, column_name,expression):
     else:
         raise ValueError("Operator not defined")
     return result
-def preprocessing(reader, df, template):
+def preprocessing(reader,df, template):
     property = reader[template]['property'].split(',')
     features = eval(reader[template]['feature'])
     value = eval(reader[template]['value'])
@@ -79,7 +79,7 @@ def preprocessing(reader, df, template):
             # filter excluding debug records from simulator dataset that are stored in Warning level
             inference_df= parsing_strings(df, actual_features[0], actual_values[0])
         if(p=='filtering2'):
-            mask=True
+
             col_feature=actual_features[0][0]
             col_value=actual_features[0][1]
             for i,values in enumerate(actual_values):
@@ -198,7 +198,8 @@ def primafacie_condition1(effect,cause,df):
     return condition1
 
 def primafacie_condition2and3(effect,cause,window_matrix):
-
+    if(effect=='X_C3s_is_down'and cause=='X_C31_is_down'):
+        print('here')
     condition3 = False
     cause_probability = computingProbability(window_matrix, cause)
     condition2 = (cause_probability > 0)
@@ -230,14 +231,13 @@ def epsilon_averages(prima_facie_causes,df,effect):
     eps_dict=dict()
     for j,causes in enumerate(prima_facie_causes):
         number_causes = 0
+        if(causes=='X_C3s_is_down'):
+            print('here')
         for k in range(len(prima_facie_causes)):
-            Ecandx=df[(df[effect]==1) & (df[causes]==1) & (df[prima_facie_causes[k]]==1)].shape[0]
-            candx = df[(df[causes] == 1) & (df[prima_facie_causes[k]] == 1)].shape[0]
-            candnotx = df[(df[causes] == 0) & (df[prima_facie_causes[k]] == 1)].shape[0]
-            if(j==k):
-                Pcandx[j, k] = 0
-                Pcandnotx[j, k] = 0
-            else:
+            if(j!=k):
+                Ecandx = df[(df[effect] == 1) & (df[causes] == 1) & (df[prima_facie_causes[k]] == 1)].shape[0]
+                candx = df[(df[causes] == 1) & (df[prima_facie_causes[k]] == 1)].shape[0]
+                candnotx = df[(df[causes] == 0) & (df[prima_facie_causes[k]] == 1)].shape[0]
                 if(candx!=0):
                     Pcandx[j, k] = Ecandx/candx
                     if(candnotx!=0):
@@ -245,21 +245,24 @@ def epsilon_averages(prima_facie_causes,df,effect):
                         Pcandnotx[j, k] = Ecandnotx/candnotx
                         number_causes+=1
                     else:
-                        if(Pcandx[j, k]==1):
+                        if(causes in prima_facie_causes[k]):
+                            Pcandx[j, k] = 0
+                            Pcandnotx[j, k] = 0
+                            number_causes += 1
+                        else:
+                            Ecandnotx =1
+                            candnotx=2
+                            Pcandnotx[j, k] = Ecandnotx / candnotx
+                            number_causes += 1
+                        '''
+                        if(Pcandx[j, k]>0):
                             Pcandnotx[j, k] = 0
                             number_causes += 1
                         else:
                             Pcandx[j, k] = 0
                             Pcandnotx[j, k] = 0
                             number_causes += 1
-
-                    '''
-                    Pcandx[j, j] = 0
-                    Pcandnotx[j, k] = 0
-                    number_causes += 1
-                    
-                    '''
-
+                        '''
                 else:
                     Pcandx[j, k] = 0
                     Pcandnotx[j, k] = 0
@@ -267,8 +270,10 @@ def epsilon_averages(prima_facie_causes,df,effect):
 
         if(number_causes==0):
             Eandc = df[(df[causes] == 1) & (df[effect] == 1)].shape[0]
-            Pc = df[(df[causes] == 1)].shape[0]
-            Pcandx[j, j] = Eandc / Pc
+            c = df[(df[causes] == 1)].shape[0]
+            Eandnotc=df[(df[causes] == 0) & (df[effect] == 1)].shape[0]
+            notc=df[(df[causes] == 0)].shape[0]
+            Pcandx[j, j] = (Eandc / c) - (Eandnotc/notc)
             number_causes=1
         concurrent_causes[j] = number_causes
 
@@ -287,41 +292,50 @@ def epsilon_averages(prima_facie_causes,df,effect):
 
 
     return eps_dict
-def structureDefinition(effect_names,A,E,windows_matrix):
+def structureDefinition(effect_names,A,E,windows_matrix,structure_causes):
     f.write('STRUCTURE EVALUATION\n')
     cause_effect_dict=dict()
+    prima_facie_dict=dict()
     for e in effect_names:
-        f.write('EFFECT CONSIDERED:'+str(e)+'\n')
+        f.write('\n\n\nEFFECT CONSIDERED:'+str(e)+'\n')
         prima_facie = list()
         for a in A:
             if (e != a):
                 if (primafacie(e, a, windows_matrix, E, True)):
                     prima_facie.append(a)
-        eps_avg = epsilon_averages(prima_facie, windows_matrix, e)
+        prima_facie_dict[e]=prima_facie
+        selected_causes=prima_facie.copy()
+        for p in prima_facie:
+            if(p not in structure_causes):
+                selected_causes.remove(p)
+
+        eps_avg = epsilon_averages(selected_causes, windows_matrix, e)
         #max_eps = max(eps_avg.values())
         mean = np.mean(list(eps_avg.values()))
         std_dev = np.std(list(eps_avg.values()))
-        if(std_dev>0):
+        '''
+        if(std_dev>0.3):
             z_scores_dict=dict()
             for key, value in eps_avg.items():
                 z_score= (value - mean) / std_dev
                 z_scores_dict[key]=z_score
-            threshold=0
+            f.write('\n\n\nZ-SCORE TEST \n')
+            f.write('Effect;Cause;Zeta-score\n')
+            for key, z_value in z_scores_dict.items():
+                f.write(str(e) + ';' + str(key) + ';' + str(z_value) + '\n')
+            f.write('\n\n\n\n')
+            threshold=0.3
         else:
             z_scores_dict=eps_avg.copy()
-            threshold=0.5
-        f.write('\n\n\nZ-SCORE TEST \n')
-        f.write('Effect;Cause;Zeta-score\n')
-        for key,z_value in z_scores_dict.items():
-            f.write(str(e)+';'+str(key)+';'+str(z_value)+'\n')
-        f.write('\n\n\n\n')
-
-        new_causes = [(key,eps_avg[key]) for key, value in z_scores_dict.items() if value >= threshold]
+            
+        '''
+        threshold = 0.6
+        new_causes = [(key,eps_avg[key]) for key, value in eps_avg.items() if value >= threshold]
         cause_effect_dict[e] = new_causes
     structureVisualisation(cause_effect_dict)
     f.write('\n\n\n')
 
-    return cause_effect_dict
+    return prima_facie_dict,cause_effect_dict
 def structureVisualisation(cause_effect_dict):
     G = nx.Graph()
 
@@ -409,13 +423,18 @@ def filtering_rules(effect,causes,ar_df,window_matrix):
 
 
 
-def discoveringPredicates(effects_names,cause_effect_dict,rules,window_matrix):
+def discoveringPredicates(effects_names,cause_effect_dict,rules,window_matrix,predicate_causes,primafacie_causes):
     f.write('\n\n\n\n\n\nPREDICATES EVALUATION\n')
     f.write('Effect;Cause;Eps\n')
     for e in effects_names:
         new_causes = cause_effect_dict[e]
         new_causes = [c[0] for c in new_causes]
+
         window_matrix, composed_causes = filtering_rules(e, new_causes, rules, window_matrix)
+        prima_facie = primafacie_causes[e]
+        for p in predicate_causes:
+            if (p in prima_facie):
+                new_causes.append(p)
         '''
 
                 window_matrix = updatingWindowMatrix(window_matrix, 'OR', a, new_causes[j])
@@ -431,28 +450,30 @@ def discoveringPredicates(effects_names,cause_effect_dict,rules,window_matrix):
 if __name__ == "__main__":
     if len(sys.argv) == 3:
         configfile_name = sys.argv[1]
-        dataset_name = sys.argv[2]
+        dataset_events_name = sys.argv[2]
         reader = ConfigParser()
         reader.read(configfile_name)
-        E = pd.read_csv(dataset_name)
+        E = pd.read_csv(dataset_events_name)
         activities_col_name = eval(reader['DATASET']['activities_col'])[0]
-        effects_names = eval(reader['EFFECT']['effects_list'])
+        effects_names = eval(reader['INFERENCE']['effects_list'])
         caseIDs_col_name = eval(reader['DATASET']['caseID_col'])[0]
         timestamps_col_name = eval(reader['DATASET']['timestamp_col'])[0]
+        structure_causes= eval(reader['INFERENCE']['structure_causes'])
+        predicate_causes=eval(reader['INFERENCE']['predicate_causes'])
         template='PREPROCESSING_SETTING'
         E=preprocessing(reader,E,template)
-        #activity_of_interest=['is_down','sigA>50']
+        activity_of_interest=['is_down','sigA>50']
         #mask=E[activities_col_name].apply(lambda x: ends_with_any(x, activity_of_interest))
         #E = E[mask]
-        E = E[(~E[activities_col_name].str.endswith('failed_by_itself')) ]
+        #E = E[(~E[activities_col_name].str.endswith('failed_by_itself')) ]
         f = open('results.txt', 'w')
         A=E[activities_col_name].unique()
         window_matrix=windowMatrix(E)
         rules = apriori_ar(window_matrix)
         rulesVisualization(rules)
-        cause_effect_dict=dict()
-        cause_effect_dict=structureDefinition(effects_names,A,E,window_matrix)
-        discoveringPredicates(effects_names, cause_effect_dict, rules, window_matrix)
+
+        primafacie_causes,selected_causes_dict=structureDefinition(effects_names,A,E,window_matrix,structure_causes)
+        discoveringPredicates(effects_names, selected_causes_dict, rules, window_matrix,predicate_causes,primafacie_causes)
 
 
 

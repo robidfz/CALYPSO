@@ -13,33 +13,7 @@ import matplotlib.pyplot as plt
 from mlxtend.frequent_patterns import apriori, association_rules,fpgrowth
 import warnings
 warnings.filterwarnings('ignore', category=DeprecationWarning)
-def parsing_strings_old(df, column_name,expression):
 
-    if expression.startswith("<"):
-        threshold = float(expression[1:])
-        df[column_name]=df[column_name].astype(float)
-        mask = df[column_name] < threshold
-    elif expression.startswith(">"):
-        threshold = float(expression[1:])
-        df[column_name]=df[column_name].astype(float)
-        mask =df[column_name] > threshold
-    elif expression.startswith("<="):
-        threshold = float(expression[2:])
-        df[column_name]=df[column_name].astype(float)
-        mask = df[column_name] <= threshold
-    elif expression.startswith(">="):
-        threshold = float(expression[2:])
-        df[column_name]=df[column_name].astype(float)
-        mask = df[column_name] >= threshold
-    elif expression.startswith("=="):
-        threshold = str(expression[2:])
-        mask = df[column_name] == threshold
-    elif expression.startswith("!="):
-        threshold = str(expression[2:])
-        mask = df[column_name] != threshold
-    else:
-        raise ValueError("Operator not defined")
-    return mask
 def parsing_strings(df, column_name,expression):
 
     if expression.startswith("<"):
@@ -98,7 +72,7 @@ def preprocessing(reader,df, template):
                     inference_df.at[index,actual_output[0]]=actual_values[0]
 
 
-    inference_df.sort_values([timestamps_col_name])
+    inference_df.sort_values([timestamps_col_name],inplace=True)
 
 
 
@@ -113,40 +87,22 @@ def ends_with_any(value, suffixes):
 
 
 
-def tree_to_code(tree, feature_names,f):
-    tree_ = tree.tree_
-    feature_name = [feature_names[i] if i != _tree.TREE_UNDEFINED else "undefined!"for i in tree_.feature]
-    f.write("def tree({}):\n".format(", ".join(feature_names)))
-    def recurse(node, depth):
-        indent = "  " * depth
-        if tree_.feature[node] != _tree.TREE_UNDEFINED:
-            name = feature_name[node]
-            threshold = tree_.threshold[node]
-            f.write("{}if {} <= {}:\n".format(indent, name, threshold))
-            recurse(tree_.children_left[node], depth + 1)
-            f.write("{}else:\n  # if {} > {}".format(indent, name, threshold))
-            recurse(tree_.children_right[node], depth + 1)
-        else:
-            f.write("{}return {}\n".format(indent, tree_.value[node]))
-    recurse(0, 1)
 
 
-
-def windowMatrix(df):
-    #df = df[df[activities_col_name].str.endswith('is_down')]
-    col=df[activities_col_name].unique()
-    window_matrix = pd.DataFrame(columns=col)
+def windowMatrix(df,rows_col_name):
+    col=df[rows_col_name].unique()
     cases = df.groupby(caseIDs_col_name)
     new_rows = list()
     for case, activities in cases:
         new_row = dict()
+        new_row['CaseID']=case
         for idx, row in activities.iterrows():
-            new_row[row[activities_col_name]] = 1
+            new_row[row[rows_col_name]] = 1
         new_rows.append(new_row)
-    new_rows = pd.DataFrame(new_rows)
-    window_matrix = pd.concat([window_matrix, new_rows], ignore_index=True)
+    window_matrix = pd.DataFrame(new_rows)
     window_matrix.fillna(0, inplace=True)
     window_matrix.to_csv('windows_matrix.csv', index=False)
+    window_matrix=window_matrix[col]
     return  window_matrix
 
 def updatingWindowMatrix(df,logic_operator,operand1,operand2):
@@ -193,13 +149,14 @@ def primafacie_condition1(effect,cause,df):
                 flag = True
                 effect_timestamp = group[group[activities_col_name] == effect][timestamps_col_name].values[0]
                 condition1 = (cause_timestamp < effect_timestamp)
+                if((effect=='X_C1s_is_down' or effect=='X_C3s_is_down')  and cause_timestamp==effect_timestamp):
+                    print(cause+'-'+effect+' time:'+str(cause_timestamp)+' caseid: '+str(cases[i])+'\n')
         i = i + 1
     condition1=(condition1 and flag)
     return condition1
 
 def primafacie_condition2and3(effect,cause,window_matrix):
-    if(effect=='X_C3s_is_down'and cause=='X_C31_is_down'):
-        print('here')
+
     condition3 = False
     cause_probability = computingProbability(window_matrix, cause)
     condition2 = (cause_probability > 0)
@@ -210,8 +167,8 @@ def primafacie_condition2and3(effect,cause,window_matrix):
     pf = ( condition2 and condition3 )
     return pf
 
-def primafacie(effect,cause,window_matrix,df=None,condtion1=False):
-    if(condtion1!=False):
+def primafacie(effect,cause,window_matrix,condition1=False,df=None):
+    if(condition1):
         cond1=primafacie_condition1(effect,cause,df)
         if(cond1):
             cond2_3=primafacie_condition2and3(effect,cause,window_matrix)
@@ -228,41 +185,28 @@ def epsilon_averages(prima_facie_causes,df,effect):
     Pcandx = np.zeros((dim, dim))
     Pcandnotx = np.zeros((dim, dim))
     concurrent_causes=np.zeros(dim)
+    alpha=1
+    beta=2
     eps_dict=dict()
     for j,causes in enumerate(prima_facie_causes):
         number_causes = 0
-        if(causes=='X_C3s_is_down'):
-            print('here')
+
         for k in range(len(prima_facie_causes)):
             if(j!=k):
                 Ecandx = df[(df[effect] == 1) & (df[causes] == 1) & (df[prima_facie_causes[k]] == 1)].shape[0]
                 candx = df[(df[causes] == 1) & (df[prima_facie_causes[k]] == 1)].shape[0]
                 candnotx = df[(df[causes] == 0) & (df[prima_facie_causes[k]] == 1)].shape[0]
                 if(candx!=0):
-                    Pcandx[j, k] = Ecandx/candx
-                    if(candnotx!=0):
-                        Ecandnotx = df[(df[effect]==1) & (df[causes]==0) & (df[prima_facie_causes[k]]==1)].shape[0]
-                        Pcandnotx[j, k] = Ecandnotx/candnotx
-                        number_causes+=1
-                    else:
-                        if(causes in prima_facie_causes[k]):
-                            Pcandx[j, k] = 0
-                            Pcandnotx[j, k] = 0
-                            number_causes += 1
-                        else:
-                            Ecandnotx =1
-                            candnotx=2
-                            Pcandnotx[j, k] = Ecandnotx / candnotx
-                            number_causes += 1
-                        '''
-                        if(Pcandx[j, k]>0):
-                            Pcandnotx[j, k] = 0
-                            number_causes += 1
-                        else:
-                            Pcandx[j, k] = 0
-                            Pcandnotx[j, k] = 0
-                            number_causes += 1
-                        '''
+                    Pcandx[j, k] = (alpha+Ecandx)/(beta+candx)
+                    Ecandnotx = df[(df[effect] == 1) & (df[causes] == 0) & (df[prima_facie_causes[k]] == 1)].shape[0]
+                    Pcandnotx[j, k] = (alpha + Ecandnotx) / (beta + candnotx)
+                    number_causes += 1
+
+                    if (Ecandnotx==0 and (causes in prima_facie_causes[k])):
+                        Pcandx[j, k] = 0
+                        Pcandnotx[j, k] = 0
+                        number_causes += 1
+
                 else:
                     Pcandx[j, k] = 0
                     Pcandnotx[j, k] = 0
@@ -273,7 +217,7 @@ def epsilon_averages(prima_facie_causes,df,effect):
             c = df[(df[causes] == 1)].shape[0]
             Eandnotc=df[(df[causes] == 0) & (df[effect] == 1)].shape[0]
             notc=df[(df[causes] == 0)].shape[0]
-            Pcandx[j, j] = (Eandc / c) - (Eandnotc/notc)
+            Pcandx[j, j] = ((alpha+Eandc) / (beta+c)) - ((alpha+Eandnotc)/(beta+notc))
             number_causes=1
         concurrent_causes[j] = number_causes
 
@@ -292,7 +236,8 @@ def epsilon_averages(prima_facie_causes,df,effect):
 
 
     return eps_dict
-def structureDefinition(effect_names,A,E,windows_matrix,structure_causes):
+
+def structureDefinition_old(effect_names,A,E,rules,windows_matrix,structure_causes):
     f.write('STRUCTURE EVALUATION\n')
     cause_effect_dict=dict()
     prima_facie_dict=dict()
@@ -313,7 +258,7 @@ def structureDefinition(effect_names,A,E,windows_matrix,structure_causes):
         #max_eps = max(eps_avg.values())
         mean = np.mean(list(eps_avg.values()))
         std_dev = np.std(list(eps_avg.values()))
-        '''
+
         if(std_dev>0.3):
             z_scores_dict=dict()
             for key, value in eps_avg.items():
@@ -327,15 +272,29 @@ def structureDefinition(effect_names,A,E,windows_matrix,structure_causes):
             threshold=0.3
         else:
             z_scores_dict=eps_avg.copy()
-            
-        '''
-        threshold = 0.6
-        new_causes = [(key,eps_avg[key]) for key, value in eps_avg.items() if value >= threshold]
+            threshold = 0.80
+        new_causes = [(key,eps_avg[key]) for key, value in z_scores_dict.items() if value >= threshold]
         cause_effect_dict[e] = new_causes
     structureVisualisation(cause_effect_dict)
     f.write('\n\n\n')
 
     return prima_facie_dict,cause_effect_dict
+
+
+def filtering_rules(effect, ar_df):
+    filtered_df = ar_df[ar_df['consequents'].isin(effect)]
+    grouped = filtered_df.groupby('consequents').apply(lambda x: list(zip(x['antecedents'], x['support'])))
+    structure_dict = grouped.to_dict()
+
+    return structure_dict
+def structureDefinition(dataset,effect_names,component_col_name,structure_causes):
+    dataset=dataset[dataset[component_col_name].isin(structure_causes)]
+    items_matrix = windowMatrix(dataset, component_col_name)
+    rules = apriori_ar(items_matrix)
+    rulesVisualization(rules)
+    structure_dict= filtering_rules(effect_names, rules)
+    structureVisualisation(structure_dict)
+    return structure_dict
 def structureVisualisation(cause_effect_dict):
     G = nx.Graph()
 
@@ -349,34 +308,14 @@ def structureVisualisation(cause_effect_dict):
     graphVisualization(G,'PdFT_structure.pdf')
 
 
-def decisionTree(df,effect,features,f):
-    X=df[features]
-    y=df[effect]
-    classes=list()
-    for i in y.unique():
-        classes.append(str(i))
-    #X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-    clf = DecisionTreeClassifier(max_depth=4)
-    clf.fit(X, y)
-    text= export_text(clf,feature_names=features)
-    f.write('\n\n\n Decision Tree accuracy for discovering rules for '+effect+'\n')
-    #f.write(text)
-    tree_to_code(clf,features,f)
-    plt.figure(figsize=(20, 10))
-    tree.plot_tree(clf, filled=True, feature_names=features, class_names=classes, rounded=True)
-    f.write('\n\n\n\n')
-    plt.savefig('Decision_tree_'+effect+'.pdf')
-    #y_pred = clf.predict(X_test)
-    #accuracy = accuracy_score(y_test, y_pred)
-    #f.write('\n\n\n Decision Tree accuracy for discovering rules for '+effect+'\n')
-    #f.write(f"Accuracy: {accuracy * 100:.2f}%\n\n\n")
+
 
 
 def apriori_ar(df):
-    df = fpgrowth(df, min_support=0.02, use_colnames=True, max_len=4, verbose=1)
-    df_ar = association_rules(df, metric="confidence", min_threshold=0.5)
-    df_ar['antecedents'] = df_ar['antecedents'].apply(lambda x: eval(str(x).replace("frozenset({", "[").replace("})", "]")))
-    df_ar['consequents'] = df_ar['consequents'].apply(lambda x: eval(str(x).replace("frozenset({", "[").replace("})", "]")))
+    df = fpgrowth(df, min_support=0.02, use_colnames=True, max_len=2, verbose=1)
+    df_ar = association_rules(df, metric="confidence", min_threshold=0.8)
+    df_ar['antecedents'] = df_ar['antecedents'].apply(lambda x: eval(str(x).replace("frozenset({", "").replace("})", "")))
+    df_ar['consequents'] = df_ar['consequents'].apply(lambda x: eval(str(x).replace("frozenset({", "").replace("})", "")))
 
     df_ar.to_csv('rules.csv', index=False)
     return df_ar
@@ -403,7 +342,7 @@ def rulesVisualization(rules):
     graphVisualization(G,'association_rules.pdf')
 
 
-def filtering_rules(effect,causes,ar_df,window_matrix):
+def filtering_rules_old(effect,causes,ar_df,window_matrix):
     effect_list=list()
     effect_list.append(effect)
     composed_causes=list()
@@ -423,28 +362,32 @@ def filtering_rules(effect,causes,ar_df,window_matrix):
 
 
 
-def discoveringPredicates(effects_names,cause_effect_dict,rules,window_matrix,predicate_causes,primafacie_causes):
+
+def discoveringPredicates(dataset,effects_names,activities_col_name,predicate_causes):
+    window_matrix = windowMatrix(dataset, activities_col_name)
+
     f.write('\n\n\n\n\n\nPREDICATES EVALUATION\n')
     f.write('Effect;Cause;Eps\n')
+
     for e in effects_names:
-        new_causes = cause_effect_dict[e]
-        new_causes = [c[0] for c in new_causes]
-
-        window_matrix, composed_causes = filtering_rules(e, new_causes, rules, window_matrix)
-        prima_facie = primafacie_causes[e]
-        for p in predicate_causes:
-            if (p in prima_facie):
-                new_causes.append(p)
-        '''
-
-                window_matrix = updatingWindowMatrix(window_matrix, 'OR', a, new_causes[j])
-                composed_causes.append(a + '_OR_' + new_causes[j])
-        '''
-        for c in composed_causes:
-            if (primafacie(e, c, window_matrix)):
-                new_causes.append(c)
-
-        eps_avg = epsilon_averages(new_causes, window_matrix, e)
+        prima_facie = list()
+        #k= [key for key in structure_dict.keys() if key in e][0]
+        #structure_comp = structure_dict[k]
+        #structure_comp = [c[0] for c in structure_comp]
+        #new_causes=[x for x in activities if any(x.startswith(prefix) for prefix in structure_comp)]
+        for c in predicate_causes:
+            if (primafacie(e,c,window_matrix,True,dataset)):
+                prima_facie.append(c)
+        composed_causes=list()
+        for i,p in enumerate(prima_facie):
+            for j in range(i+1,len(prima_facie)):
+                window_matrix = updatingWindowMatrix(window_matrix, 'AND', p, prima_facie[j])
+                composed_cause=p + '_AND_' + prima_facie[j]
+                if (primafacie(e, composed_cause, window_matrix)):
+                    composed_causes.append(composed_cause)
+        for x in composed_causes:
+            prima_facie.append(x)
+        eps_avg = epsilon_averages(prima_facie, window_matrix, e)
 
 
 if __name__ == "__main__":
@@ -455,25 +398,24 @@ if __name__ == "__main__":
         reader.read(configfile_name)
         E = pd.read_csv(dataset_events_name)
         activities_col_name = eval(reader['DATASET']['activities_col'])[0]
-        effects_names = eval(reader['INFERENCE']['effects_list'])
+        structure_effects_names = eval(reader['INFERENCE']['structure_effects'])
         caseIDs_col_name = eval(reader['DATASET']['caseID_col'])[0]
         timestamps_col_name = eval(reader['DATASET']['timestamp_col'])[0]
+        component_col_name=eval(reader['DATASET']['items_col'])[0]
         structure_causes= eval(reader['INFERENCE']['structure_causes'])
-        predicate_causes=eval(reader['INFERENCE']['predicate_causes'])
+        predicates_causes=eval(reader['INFERENCE']['predicates_causes'])
+        predicates_effects_names = eval(reader['INFERENCE']['predicates_effects'])
         template='PREPROCESSING_SETTING'
         E=preprocessing(reader,E,template)
         activity_of_interest=['is_down','sigA>50']
-        #mask=E[activities_col_name].apply(lambda x: ends_with_any(x, activity_of_interest))
+        a=E[activities_col_name].unique()
         #E = E[mask]
         #E = E[(~E[activities_col_name].str.endswith('failed_by_itself')) ]
         f = open('results.txt', 'w')
         A=E[activities_col_name].unique()
-        window_matrix=windowMatrix(E)
-        rules = apriori_ar(window_matrix)
-        rulesVisualization(rules)
 
-        primafacie_causes,selected_causes_dict=structureDefinition(effects_names,A,E,window_matrix,structure_causes)
-        discoveringPredicates(effects_names, selected_causes_dict, rules, window_matrix,predicate_causes,primafacie_causes)
+        structure_dict=structureDefinition(E,structure_effects_names,component_col_name,structure_causes)
+        discoveringPredicates(E,predicates_effects_names,activities_col_name,predicates_causes)
 
 
 

@@ -43,8 +43,8 @@ class Component:
             if(pedix==j):
                 port=p
         return port
-    def setDynamic(self,name,threshold):
-        dynamic= Dynamic(name,threshold)
+    def setDynamic(self,name):
+        dynamic= Dynamic(name)
         self.dynamics.append(dynamic)
 
     def getDynamic(self,name):

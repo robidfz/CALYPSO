@@ -13,7 +13,7 @@ from pm4py.visualization.petri_net import visualizer as pn_visualizer
 
 data_excel=pd.read_csv('dataset.csv',sep=',')
 data_excel=data_excel[data_excel['Detail']!='VALUE']
-data_excel.rename(columns={'observation': 'concept:name'}, inplace=True)
+data_excel.rename(columns={'Activity': 'concept:name'}, inplace=True)
 
 event_log = log_converter.apply(data_excel)
 # alpha miner

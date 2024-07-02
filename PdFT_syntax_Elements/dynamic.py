@@ -1,7 +1,11 @@
 class Dynamic:
-    def __init__(self,name,threshold):
+    def __init__(self,name):
         self.name = name
-        self.threshold = threshold
+        self.threshold = None
 
-    def weightFunction(self):
-        return self.weight
+
+    def setThreshold(self,threshold):
+        self.threshold=threshold
+
+    def getName(self):
+        return self.name

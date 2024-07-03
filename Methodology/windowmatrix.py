@@ -25,7 +25,7 @@ class WindowMatrix:
         return window_matrix
 
     def updatingWindowMatrixPredicates(self, logic_operator, operand1, operand2):
-        new_cause = operand1 + '_' + logic_operator + '_' + operand2
+        new_cause = utils.definePredicate(operand1,operand2,logic_operator)
         if (new_cause not in self.window_matrix.columns):
             values = list()
             if (logic_operator == 'AND'):
@@ -44,23 +44,6 @@ class WindowMatrix:
         self.window_matrix.to_csv('window_matrix.csv', index=False)
         return self.window_matrix
 
-    def updatingWindowMatrixTransitions_old(self, transition):
-        initial_state = transition[0]
-        final_state = transition[1]
-        activities = self.window_matrix.columns
-        components = utils.extractComponents(activities)
-        for i, row in self.window_matrix.iterrows():
-            for c in components:
-                initial_activity = c + "_" + initial_state
-                final_activity = c + "_" + final_state
-                transition_activity = utils.defineTransitionActivities(c, transition)
-                if ((row[initial_activity] == 1) and (row[final_activity] == 1)):
-                    self.window_matrix.at[i, transition_activity] = 1
-                else:
-                    self.window_matrix.at[i, transition_activity] = 0
-
-        self.window_matrix.to_csv("window_matrix.csv", index=False)
-        return self.window_matrix
 
     def updatingWindowMatrixTransitions(self, transition):
         initial_state = transition[0]
@@ -68,19 +51,27 @@ class WindowMatrix:
         activities = self.window_matrix.columns
         components = utils.extractComponents(activities)
         groups=self.df.groupby(self.caseIDs_col_name)
-        for group, row in groups:
-            for c in components:
-                initial_activity = c + "_" + initial_state
-                final_activity = c + "_" + final_state
-                transition_activity = utils.defineTransitionActivities(c, transition)
-                considered_activities=row[self.activities_col_name].values
-                if ((initial_activity in considered_activities) & (final_activity in considered_activities)):
-                    initial_timestamp=min(row[row[self.activities_col_name]==initial_activity][self.timestamp_col_name].values)
-                    final_timestamp=max(row[row[self.activities_col_name]==final_activity][self.timestamp_col_name].values)
-                    if(initial_timestamp<final_timestamp):
-                        self.window_matrix.at[group, transition_activity] = 1
-                else:
-                    self.window_matrix.at[group, transition_activity] = 0
+        for c in components:
+            initial_activity = c + "_" + initial_state
+            final_activity = c + "_" + final_state
+            if(initial_activity in activities and final_activity  in activities):
+                new_col=list()
+                for group, row in groups:
+                    considered_activities=row[self.activities_col_name].values
+                    if ((initial_activity in considered_activities) & (final_activity in considered_activities)):
+                        group_initial_activities=row[row[self.activities_col_name]==initial_activity]
+                        initial_timestamp=group_initial_activities[self.timestamp_col_name].min()
+                        group_final_activities = row[row[self.activities_col_name] == final_activity]
+                        final_timestamp = group_final_activities[self.timestamp_col_name].max()
+                        if(initial_timestamp<final_timestamp):
+                            new_col.append(1)
+                        else:
+                            new_col.append(0)
+
+                    else:
+                        new_col.append(0)
+                col_name=utils.defineTransitionActivities(c,transition)
+                self.window_matrix[col_name]=new_col
 
         self.window_matrix.to_csv("window_matrix.csv", index=False)
         return self.window_matrix

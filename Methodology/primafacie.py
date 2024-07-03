@@ -17,12 +17,13 @@ class PrimaFacie:
             effect=effect_final
             while (condition1 and i < len(cases)):
                 group = self.df[self.df[self.caseIDs_col_name] == cases[i]]
-                if (cause in group[self.activities_col_name].values):
-                    cause_timestamp = group[group[self.activities_col_name] == cause][self.timestamps_col_name].values[0]
-                    if (effect_initial in group[self.activities_col_name].values and effect in group[self.activities_col_name].values):
+                if (effect_initial in group[self.activities_col_name].values and effect in group[self.activities_col_name].values):
+                    if (cause in group[self.activities_col_name].values):
                         flag = True
+                        cause_timestamp = group[group[self.activities_col_name] == cause][self.timestamps_col_name].values[0]
                         effect_timestamp = group[group[self.activities_col_name] == effect][self.timestamps_col_name].values[0]
                         condition1 = (cause_timestamp < effect_timestamp)
+
                 i = i + 1
             condition1 = (condition1 and flag)
         else:
@@ -62,6 +63,7 @@ class PrimaFacie:
                                 times.append(cause_timestamp)
                             cause_timestamp = max(times)
                             condition1 = (cause_timestamp < effect_timestamp)
+
                     i = i + 1
             else:
                 while (condition1 and i < len(cases)):
@@ -80,6 +82,7 @@ class PrimaFacie:
                                     times.append(cause_timestamps)
                             cause_timestamp = min(times)
                             condition1 = (cause_timestamp < effect_timestamp)
+
                     i = i + 1
             condition1 = (condition1 and flag)
         return condition1
@@ -87,9 +90,6 @@ class PrimaFacie:
 
 
     def findComponentState(self, group,component):
-
-
-
         filtered_group = group[group[self.activities_col_name].str.startswith(component)]
 
         if (len(filtered_group) > 0):

@@ -6,9 +6,12 @@ class Component:
         self.code=code
         self.input_ports=list()
         self.output_port='p_{'+str(self.extractPedix())+'}'
-        self.states=['is_up','is_down','is_failing']
-        self.transitions=self.defineTransitions()
+        self.states=list()
+        self.statePriorities = {'is_up': 3, 'is_failing': 2, 'is_down': 1}
+        self.transitions=list()
+        self.transitionPriorities=dict()
         self.dynamics=list()
+
 
 
 
@@ -18,13 +21,12 @@ class Component:
         return component_pedix
 
     def defineTransitions(self):
-        transitions=list()
         for i,s1 in enumerate(self.states):
             for j in range(i+1,len(self.states)):
                 s2=self.states[j]
-                transitions.append(Transition(s1,s2))
-                transitions.append(Transition(s2, s1))
-        return transitions
+                self.transitions.append(Transition(s1,s2))
+                self.transitions.append(Transition(s2, s1))
+        self.defineTransitionPriorities()
 
     def findTransition(self,s1,s2):
         struct=(s1,s2)
@@ -53,6 +55,26 @@ class Component:
             if(d.name==name):
                 retval=d
         return retval
+    def setStates(self,states):
+        self.states=states
+        self.defineTransitions()
+
+    def setStatePriority(self,state,priority):
+        self.statePriorities[state]=priority
+
+
+    def getTransitionPriority(self,t):
+        initial_state_priority=self.statePriorities[t[0]]
+        final_state_priority=self.statePriorities[t[1]]
+        transition_priority= initial_state_priority-final_state_priority
+        return transition_priority
+
+    def defineTransitionPriorities(self):
+        for t in self.transitions:
+            priority=self.getTransitionPriority(t.structure)
+            self.transitionPriorities[t]=priority
+
+
 
     '''
     def getOutputPort(self):

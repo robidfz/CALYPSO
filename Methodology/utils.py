@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-
+import itertools
 
 def parsing_strings(df, column_name,expression):
 
@@ -35,16 +35,16 @@ def addingUpState(df,activities_col_name,caseIDs_col_name,timestamps_col_name):
 
         timestamp=min(activities[timestamps_col_name].values)
         caseID=activities[caseIDs_col_name].unique()[0]
-        for c in components:
-            #if (not any(c in element for element in activities[activities_col_name])):
-            new_row = dict()
-            for column in col:
-                new_row[column]=None
 
-            new_row[activities_col_name] = c+"_is_up"
-            new_row[timestamps_col_name]=timestamp
-            new_row[caseIDs_col_name]=caseID
-            new_rows.append(new_row)
+        for c in components:
+                new_row = dict()
+                for column in col:
+                    new_row[column]=None
+
+                new_row[activities_col_name] = c+"_is_up"
+                new_row[timestamps_col_name]=timestamp-1
+                new_row[caseIDs_col_name]=caseID
+                new_rows.append(new_row)
     new_rows_df = pd.DataFrame(new_rows, columns=col)
     df = pd.concat([df, new_rows_df], ignore_index=True)
     df = df.sort_values(by=timestamps_col_name)
@@ -60,6 +60,7 @@ def computingProbability(df, cause, effect=None):
         probability = c / all
     return probability
 
+
 def findComponent(components, name):
     for component in components:
         if component.name == name:
@@ -68,7 +69,11 @@ def findComponent(components, name):
 
 def matchingStrings(s1, s2, operator):
     elements = s1.split("_" + operator + "_")
-    check = any(e in s2 for e in elements)
+    components=list()
+    for e in elements:
+        component,actv=splitActivity(e)
+        components.append(component)
+    check = any(e in s2 for e in components)
     return check
 
 def matchingElements(s1, s2, operator):
@@ -83,6 +88,16 @@ def findOperator(s):
     if (index == -1):
         operator = 'OR'
     return operator
+def composedPredicate(elems,operator):
+    result = elems[0]
+    for s in elems[1:]:
+        result = definePredicate(result, s,operator)
+    return result
+def combinations(elem,operator):
+    permutations_list = list(itertools.permutations(elem))
+    results = [composedPredicate(perm,operator) for perm in permutations_list]
+    return results
+
 
 def ends_with_any(value, suffixes):
     if isinstance(value, str):

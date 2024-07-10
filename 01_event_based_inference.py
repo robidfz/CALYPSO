@@ -10,11 +10,12 @@ warnings.filterwarnings('ignore', category=DeprecationWarning)
 from PdFT_syntax_Elements.component import Component
 from PdFT_syntax_Elements.structure import PdFT
 from PdFT_syntax_Elements.event import Event
+from PdFT_syntax_Elements.dynamic import Dynamic
 from Methodology.primafacie import PrimaFacie
 import Methodology.utils as utils
 from Methodology.windowmatrix import WindowMatrix
 import Methodology.epsilons as epsilon
-
+import itertools
 
 def preprocessing(reader,df, template):
     property = reader[template]['property'].split(',')
@@ -69,7 +70,6 @@ def structureDefinition(reader,df,activity_col_name):
     activities=df[activity_col_name].unique()
     for i, c in enumerate(component_set):
         states=list()
-        dynamic_set=dynamic[i]
         comp_obj = Component(c, "c_" + str(i))
         states_activities=[s for s in activities if s.startswith(c)]
         for sa in states_activities:
@@ -77,9 +77,9 @@ def structureDefinition(reader,df,activity_col_name):
             states.append(state)
         comp_obj.setStates(states)
         structure.addComponent(comp_obj)
-        if(len(dynamic_set)>0):
-            for d in dynamic_set:
-                comp_obj.setDynamic(d)
+    for d in dynamic:
+        dyn_obj=Dynamic(d)
+        structure.addDynamic(dyn_obj)
 
     return structure
 
@@ -89,10 +89,10 @@ def structureDefinition(reader,df,activity_col_name):
 def discoveringStructure(dataset,structure,effect_names):
 
 
-    wm=WindowMatrix(dataset,caseIDs_col_name,activities_col_name,timestamps_col_name)
-    window_matrix = wm.windowMatrixGeneration()
-    pf=PrimaFacie(dataset,caseIDs_col_name,activities_col_name,timestamps_col_name,window_matrix)
-    components=structure.componentList()
+    #wm=WindowMatrix(dataset,caseIDs_col_name,activities_col_name,timestamps_col_name)
+    #window_matrix = wm.windowMatrixGeneration()
+    pf=PrimaFacie(dataset,caseIDs_col_name,activities_col_name,timestamps_col_name,window_matrix=None)
+    components=structure.getComponentsNames()
     cause_effect_dict=dict()
     for e in effect_names:
         A=[utils.defineActivity(a,e) for a in components]
@@ -100,13 +100,14 @@ def discoveringStructure(dataset,structure,effect_names):
             prima_facie = list()
             for a in A:
                 if(f!=a):
-                    if (pf.primafacie(f, a)):
+                    if (pf.primafacie(f, a,10)):
                         prima_facie.append(a)
-            eps_avg=epsilon.epsilon_averages(prima_facie,window_matrix,f)
+            #eps_avg=epsilon.epsilon_averages(prima_facie,window_matrix,f)
+            eps_avg=epsilon.epsilon_averages(prima_facie,dataset,f,activities_col_name,caseIDs_col_name,timestamps_col_name,10)
             cause_effect_dict[f] = eps_avg
     cause_effect_dict=utils.filteringSignificantCauses(cause_effect_dict)
     structure=structureVisualisation(structure,cause_effect_dict)
-    return wm,structure
+    return None,structure
 
 
 
@@ -226,75 +227,61 @@ def graphVisualization(G,structure,name_fig):
 
 
 
-def discoveringPredicates(df,wm,effects_transition,structure):
-    #considering the already build window matrix
-    window_matrix=wm.window_matrix
-    #istantiaiting a new obj for prima facie computation using the new window matrix
-    pf=PrimaFacie(df, caseIDs_col_name,activities_col_name,timestamps_col_name,window_matrix)
-    possible_activities=window_matrix.columns
+def discoveringPredicates(df,window_matrix,structure):
     eps_avg_dict=dict()
-    components=structure.componentList()
+    components=structure.getComponentsNames()
     operands=['AND','OR']
-    for t in effects_transition:
-        windows_matrix = wm.updatingWindowMatrixTransitions(t)
-    possible_activities=window_matrix.columns
-    for t in effects_transition:
-        for effect_component in components:
-            #definig the effect transition
-            effect=utils.defineTransitionActivities(effect_component,t)
-            if(effect in possible_activities):
-                if (t == ['is_up', 'is_failing']):
-                    print('hello')
-                #selecting the connected component of f in the structure
-                effect_obj=structure.findComponent(effect_component)
-                connected_components_obj = structure.findConnectedComponents(effect_obj.name)
-                if(len(connected_components_obj)>0):
-                    connected_components = [c.name for c in connected_components_obj]
-                    #definig the cause transitions
-                    #for c in connected_components:
-                        #significant_causes=[a for a in possible_activities if a.startswith(c)]
-                    significant_causes = [utils.defineTransitionActivities(a,t) for a in connected_components]
-                    significant_causes = [item for item in significant_causes if item in possible_activities]
-                    if(len(significant_causes)==0):
-                        transition = (t[0], t[1])
-                        for c in connected_components_obj:
-                            actual_priority=c.getTransitionPriority(transition)
-                            transitionPriorities=c.transitionPriorities
-                            transitions=[key.structure for key, value in transitionPriorities.items() if value*actual_priority > abs(actual_priority)]
-                        transitions=list(set(transitions))
-                        significant_causes = significant_causes+ [utils.defineTransitionActivities(a,t) for a,t in product(connected_components,transitions)]
+    local_eps=dict()
+    #defining all the possible transitions observed in the dataset
+    possible_transitions_dict=utils.extractPossibleTransition(df,activities_col_name,caseIDs_col_name,components)
+    pf = PrimaFacie(df, caseIDs_col_name, activities_col_name, timestamps_col_name, window_matrix)
+    #selecting a component
+    for effect_component in components:
+        effect_transitions=possible_transitions_dict[effect_component]
+        effect_obj=structure.findComponent(effect_component)
+        #selecting the connected components in the structure
+        connected_components_obj = structure.findConnectedComponents(effect_obj.name)
+        if(len(connected_components_obj)>0):
+            connected_components = sorted([c.name for c in connected_components_obj])
+            possible_single_causes=list()
+            for c in connected_components:
+                #selecting all the possible transitions associated to the connected components
+                possible_single_causes=possible_single_causes+possible_transitions_dict[c]
+
+            #Selecting an observed effect: one of the possible transition on the selected component
+            for f in effect_transitions:
+                A = list()
+                #find what transition among all the possible transition observed in the connected components is a prima facie for f
+                for a in possible_single_causes:
+                    if (pf.primafacie(f, a, 10)):
+                        A.append(a)
+                #compute all the epsilon and select the most significant causes
+                local_eps_list = epsilon.epsilon_averages(A, df, f, activities_col_name, caseIDs_col_name,timestamps_col_name, 10)
+                local_eps[f] = local_eps_list
+                cause_effect_dict = utils.filteringSignificantCauses(local_eps, False)
+                selected_components=[x[0] for x in cause_effect_dict[f]]
+                selected_transitions=dict()
+                for c in connected_components:
+                    selected_transitions[c]=[x for x in selected_components if x.startswith(c)]
+                A = list()
+                #composing the most significant causes with the operands
+                combinations = list(itertools.product(*[selected_transitions[component] for component in connected_components]))
+                total_composed_causes=list()
+                for operand in operands:
+                    composed_causes=[f"_{operand}_".join(combination) for combination in combinations]
+                    total_composed_causes=total_composed_causes+composed_causes
+                # find what composed cause among all the possible composed causes is a prima facie for f
+                for a in total_composed_causes:
+                    if (pf.primafacie(f, a,10)):
+                            A.append(a)
+                eps_avg = epsilon.epsilon_averages(A,df,f,activities_col_name,caseIDs_col_name,timestamps_col_name,10)
+                eps_avg_dict[f] = eps_avg
 
 
-
-                    A = list()
-                    # testing for transition events that are prima facie
-                    for i, p in enumerate(significant_causes):
-                        if (pf.primafacie(effect, p)):
-                            A.append(p)
-                    #defining all the possible composed causes
-                    for operand in operands:
-                        composed_causes = list()
-                        possible_composed_causes = significant_causes.copy()
-                        for i,p in enumerate(possible_composed_causes):
-                            for j in range(i+1,len(possible_composed_causes)):
-                                # building the composed causes and verify the prima facie conditions
-                                if(utils.matchingStrings(p,possible_composed_causes[j],operand)==False):
-                                    composed_cause = utils.definePredicate(p,possible_composed_causes[j],operand)
-                                    check=any([utils.matchingElements(composed_cause,x,operand) for x in possible_composed_causes])
-                                    if(check==False):
-                                        possible_composed_causes.append(composed_cause)
-                                        if(composed_cause not in window_matrix.columns):
-                                            windows_matrix = wm.updatingWindowMatrixPredicates(operand, p, possible_composed_causes[j])
-                                        if (pf.primafacie(effect, composed_cause)):
-                                            composed_causes.append(composed_cause)
-                        #selecting the composed causes that are prima facie for e
-                        A=A+composed_causes
-                    eps_avg = epsilon.epsilon_averages(A, windows_matrix, effect)
-                    eps_avg_dict[effect]=eps_avg
-    cause_effect_dict=utils.filteringSignificantCauses(eps_avg_dict,True)
+    cause_effect_dict=utils.filteringSignificantCauses(eps_avg_dict,False)
     structure=buildingSemantics(cause_effect_dict,structure)
-    #buildingSemantics(eps_avg_dict,structure_list)
-    return wm,structure
+    return window_matrix,structure
+
 
 
 
@@ -338,31 +325,32 @@ def buildingSemantics(cause_effect_dict,structure):
     predicate_df.to_csv('predicate_PdFT.csv',index=False)
     return structure
 
-def discoveringThresholds(df,wm,structure,dynamic_effect_names):
-    window_matrix = wm.window_matrix
+def discoveringThresholds(df,window_matrix,structure,dynamic_effect_names):
     pf=PrimaFacie(df, caseIDs_col_name,activities_col_name,timestamps_col_name,window_matrix)
-    possible_activities=window_matrix.columns
+    #possible_activities=window_matrix.columns
+    possible_activities=df[activities_col_name].unique()
     eps_avg_dict=dict()
     # selecting the components on which we have dynamics installed
-    selected_components=structure.findComponentWithDynamics()
+    selected_components=structure.components
+    selected_components=[c.name for c in selected_components]
+    dynamics_names=structure.dynamics
+    dynamics_names = [d.name for d in dynamics_names]
     for t in dynamic_effect_names:
         #defining the transition effect on the selected components
-        effects=[utils.defineTransitionActivities(a.name,t) for a in selected_components]
+        effects=[utils.defineTransitionActivities(a,t) for a in selected_components]
+        thresholds_predicates=list()
         for effect in effects:
-            #find the dynamic installed on the component
-            effect_component_name,transition=utils.splitActivity(effect)
-            effect_component_obj=structure.findComponent(effect_component_name)
-            dynamics_names=[d.getName() for d in effect_component_obj.dynamics]
             for d in dynamics_names:
-                thresholds_predicates = [a for a in possible_activities if a.startswith(d)]
+                thresholds_predicates =thresholds_predicates+ [a for a in possible_activities if a.startswith(d)]
             A=list()
             for a in thresholds_predicates:
-                if(pf.primafacie(effect, a)):
+                if(pf.primafacie(effect, a,10)):
                     A.append(a)
-            eps_avg = epsilon.epsilon_averages(A, window_matrix, effect)
+            eps_avg = epsilon.epsilon_averages(A,df,effect,activities_col_name,caseIDs_col_name,timestamps_col_name,10)
 
             eps_avg_dict[effect]=eps_avg
-    cause_effect_dict=utils.filteringSignificantCauses(eps_avg_dict,True)
+    #window_matrix.to_csv("window_matrix.csv", index=False)
+    cause_effect_dict=utils.filteringSignificantCauses(eps_avg_dict,False)
     structure=buildingDynamics(cause_effect_dict,structure)
     return structure
 
@@ -383,7 +371,7 @@ def buildingDynamics(cause_effect_dict,structure):
         eps=[c[1] for c in values]
         for k, cause in enumerate(causes):
             dynamic_name,threshold=utils.splitDynamicCauses(cause)
-            dyn=effect_obj.getDynamic(dynamic_name)
+            dyn=structure.findDynamic(dynamic_name)
             dyn.threshold=threshold
             predicate=cause
             t=effect_obj.findTransition(initial_state,final_state)
@@ -421,7 +409,7 @@ if __name__ == "__main__":
         E=preprocessing(reader,E,template)
         structure = structureDefinition(reader, E, activities_col_name)
         wm,structure=discoveringStructure(E,structure,structure_effects_names)
-        wm,structure=discoveringPredicates(E,wm,predicates_effects_names,structure)
+        wm,structure=discoveringPredicates(E,wm,structure)
         discoveringThresholds(E,wm,structure,dynamics_effect_names)
 
 

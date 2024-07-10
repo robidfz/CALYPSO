@@ -2,13 +2,28 @@ class PdFT:
     def __init__(self):
         self.components=list()
         self.events=list()
+        self.dynamics=list()
 
 
-    def addComponent(self, component):
-        self.components.append(component)
+    def addComponent(self, component_obj):
+        self.components.append(component_obj)
+    def addDynamic(self, dynamic_obj):
+        self.dynamics.append(dynamic_obj)
 
     def addEvent(self,event):
         self.events.append(event)
+
+    def findDynamic(self,dynamic_name):
+        retval=None
+        i=0
+        found=False
+        while found==False and i<len(self.dynamics):
+            found=(self.dynamics[i].name==dynamic_name)
+            if(found):
+                retval=self.dynamics[i]
+            i=i+1
+        return retval
+
 
     def findComponent(self,comp_name):
         retval=None
@@ -27,7 +42,7 @@ class PdFT:
         return retval
 
 
-    def componentList(self):
+    def getComponentsNames(self):
         c_list=list()
         for c in self.components:
             c_list.append(c.name)

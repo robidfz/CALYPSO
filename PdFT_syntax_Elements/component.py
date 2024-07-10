@@ -10,7 +10,7 @@ class Component:
         self.statePriorities = {'is_up': 3, 'is_failing': 2, 'is_down': 1}
         self.transitions=list()
         self.transitionPriorities=dict()
-        self.dynamics=list()
+
 
 
 
@@ -45,16 +45,9 @@ class Component:
             if(pedix==j):
                 port=p
         return port
-    def setDynamic(self,name):
-        dynamic= Dynamic(name)
-        self.dynamics.append(dynamic)
 
-    def getDynamic(self,name):
-        retval=None
-        for d in self.dynamics:
-            if(d.name==name):
-                retval=d
-        return retval
+
+
     def setStates(self,states):
         self.states=states
         self.defineTransitions()

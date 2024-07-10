@@ -6,7 +6,6 @@ class WindowMatrix:
         self.caseIDs_col_name = caseIDs_col_name
         self.activities_col_name = activities_col_name
         self.timestamp_col_name = timestamps_col_name
-        self.window_matrix=None
 
     def windowMatrixGeneration(self):
         col = self.df[self.activities_col_name].unique()
@@ -21,34 +20,47 @@ class WindowMatrix:
         window_matrix = pd.DataFrame(new_rows)
         window_matrix.fillna(0, inplace=True)
         window_matrix = window_matrix[col]
-        self.window_matrix=window_matrix
         return window_matrix
 
-    def updatingWindowMatrixPredicates(self, logic_operator, operand1, operand2):
-        new_cause = utils.definePredicate(operand1,operand2,logic_operator)
-        if (new_cause not in self.window_matrix.columns):
+
+
+    def updatingWindowMatrixPredicates(self, cause,window_matrix):
+        logic_operator=utils.findOperator(cause)
+        elements=utils.splitPredicate(cause)
+        if (cause not in window_matrix.columns):
             values = list()
             if (logic_operator == 'AND'):
-                for i, row in self.window_matrix.iterrows():
-                    if (row[operand1] == 1 and row[operand2] == 1):
+                for i, row in window_matrix.iterrows():
+                    condition=True
+                    j=0
+                    while(condition and j<len(elements)):
+                        condition=(row[elements[j]]==1)
+                        j=j+1
+                    if(condition):
                         values.append(1)
                     else:
                         values.append(0)
+
             if (logic_operator == 'OR'):
-                for i, row in self.window_matrix.iterrows():
-                    if (row[operand1] == 0 and row[operand2] == 0):
-                        values.append(0)
-                    else:
+                for i, row in window_matrix.iterrows():
+                    condition = True
+                    j = 0
+                    while (condition and j < len(elements)):
+                        condition = (row[elements[j]] == 0)
+                        j = j + 1
+                    if (condition==False):
                         values.append(1)
-            self.window_matrix[new_cause] = values
-        self.window_matrix.to_csv('window_matrix.csv', index=False)
-        return self.window_matrix
+                    else:
+                        values.append(0)
+            window_matrix[cause] = values
+        #window_matrix.to_csv('window_matrix.csv', index=False)
+        return window_matrix
 
 
-    def updatingWindowMatrixTransitions(self, transition):
+    def updatingWindowMatrixTransitions(self, transition,window_matrix):
         initial_state = transition[0]
         final_state = transition[1]
-        activities = self.window_matrix.columns
+        activities = window_matrix.columns
         components = utils.extractComponents(activities)
         groups=self.df.groupby(self.caseIDs_col_name)
         for c in components:
@@ -71,7 +83,7 @@ class WindowMatrix:
                     else:
                         new_col.append(0)
                 col_name=utils.defineTransitionActivities(c,transition)
-                self.window_matrix[col_name]=new_col
+                window_matrix[col_name]=new_col
 
-        self.window_matrix.to_csv("window_matrix.csv", index=False)
-        return self.window_matrix
+        #window_matrix.to_csv("window_matrix.csv", index=False)
+        return window_matrix

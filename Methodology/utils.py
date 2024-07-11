@@ -1,7 +1,12 @@
 import pandas as pd
 import numpy as np
 import itertools
-
+from numpy import array, linspace
+from sklearn.neighbors import KernelDensity
+import matplotlib.pyplot as plt
+from scipy.signal import argrelextrema
+import numpy as np
+from sklearn.cluster import DBSCAN
 def parsing_strings(df, column_name,expression):
 
     if expression.startswith("<"):
@@ -165,7 +170,7 @@ def findOperator(s):
     return operator
 
 def findOperatornew(s):
-    possible_operatores=['AND','OR','NOT']
+    possible_operatores=['AND','OR','NOT','>']
     i=0
     index=-1
     while(i<len(possible_operatores) and index==-1):
@@ -262,6 +267,76 @@ def splitDynamicCauses(cause):
     elem = cause[:index]
 
     return elem, threshold
+def filteringSignificantCauseswitherrors(eps_avg_dict, maximum=False):
+    cause_effect_dict=dict()
+    for effect, values in eps_avg_dict.items():
+        causes = [c[0] for c in values]
+        eps = [c[1] for c in values]
+        eps_array = np.array(eps)
+        a = eps_array.reshape(-1, 1)
+        kde = KernelDensity(kernel='gaussian', bandwidth=0.1).fit(a)
+        s = np.linspace(min(eps) - 1, max(eps) + 1, 1000)
+        e = kde.score_samples(s.reshape(-1, 1))
+        plt.plot(s, e)
+        mi, ma = argrelextrema(e, np.less)[0], argrelextrema(e, np.greater)[0]
+        plt.plot(s[:mi[0] + 1], e[:mi[0] + 1], 'r',  # Intervallo prima del primo minimo locale
+                 s[mi[0]:mi[1] + 1], e[mi[0]:mi[1] + 1], 'g',  # Intervallo tra i due minimi locali
+                 s[mi[1]:], e[mi[1]:], 'b',  # Intervallo dopo il secondo minimo locale
+                 s[ma], e[ma], 'go',  # Massimi locali
+                 s[mi], e[mi], 'ro')  # Minimi locali
+
+        plt.show()
+
+        # Seleziona i valori di epsilon che appartengono a ciascun cluster
+        cluster_1 = [val for val in eps if val <= s[mi[0]]]
+        cluster_2 = [val for val in eps if s[mi[0]] < val <= s[mi[1]]]
+        cluster_3 = [val for val in eps if val > s[mi[1]]]
+        new_causes = [(value[0], value[1]) for value in values if value[1] in cluster_3]
+        cause_effect_dict[effect] = new_causes
+    return cause_effect_dict
+
+def filteringSignificantCausesDBSCAN(eps_avg_dict, maximum=False):
+    cause_effect_dict=dict()
+    for effect, values in eps_avg_dict.items():
+        causes = [c[0] for c in values]
+        eps = [c[1] for c in values]
+        if len(eps)!=0:
+            eps_array = np.array(eps)
+            a = eps_array.reshape(-1, 1)
+
+
+            # Dati
+
+
+            # Applica DBSCAN
+            db = DBSCAN(eps=0.05, min_samples=1).fit(a)
+
+            # Estrai i cluster
+            labels = db.labels_
+
+            # Identifica i cluster unici
+            unique_labels = set(labels)
+
+            # Trova il cluster con i valori medi più alti
+            clusters = {}
+            for label in unique_labels:
+                if label != -1:  # Ignora il rumore
+                    cluster_data = a[labels == label]
+                    clusters[label] = cluster_data.mean()
+
+            # Trova il cluster con la media più alta
+            best_cluster_label = max(clusters, key=clusters.get)
+            best_cluster_data = a[labels == best_cluster_label]
+
+
+
+            new_causes = [(value[0], value[1]) for value in values if value[1] in best_cluster_data]
+        else:
+            new_causes=[]
+        cause_effect_dict[effect] = new_causes
+    return cause_effect_dict
+
+
 def filteringSignificantCauses(eps_avg_dict, maximum=False):
     cause_effect_dict = dict()
     for effect, values in eps_avg_dict.items():
@@ -306,21 +381,9 @@ def filteringLatestCausesold(eps_avg,effect,df,activities_col_name,caseIDs_col_n
     return filtered_eps
 
 
-def filteringLatestCauses_old_not_gold(A,effect,df,activities_col_name,caseIDs_col_name, timestamps_col_name):
-    filtered_eps = A.copy()
-    for i, c in enumerate(A):
-        for j in range(i + 1, len(A)):
-            retval=checkLatestCause(c, A[j], effect, df, activities_col_name, caseIDs_col_name, timestamps_col_name)
-            if(retval!=-1):
-                latest_cause=retval
-                if(latest_cause!=A[j] and A[j] in filtered_eps):
-                    filtered_eps.remove(A[j])
-                else:
-                    if(c in filtered_eps):
-                        filtered_eps.remove(c)
 
 
-    return filtered_eps
+
 
 
 def filteringLatestCauses(A, effect, df, activities_col_name, caseIDs_col_name, timestamps_col_name):
@@ -348,10 +411,10 @@ def filteringLatestCauses(A, effect, df, activities_col_name, caseIDs_col_name, 
 def findPredicateTimestamp(group,cause,activities_col_name,timestamps_col_name):
     operator=findOperatornew(cause)
     preds = splitPredicate(cause)
-
+    retval=None
     j = 0
     times=list()
-    if(operator==-1):
+    if(operator==-1 or operator=='>'):
         cause_i, cause_f = splitTransitionActivities(preds[0])
         if(cause_i==cause_f):
             check1 = cause_i in group[activities_col_name].values
@@ -545,7 +608,7 @@ def checkLatestCause(cause1,cause2,effect,df,activity_col_name,caseID_col_name,t
                         previous_activity = real_possible_cause
                         real_possible_cause = temp
                     find_previous = find_previous + 1
-                condition = previous_activity_timestamp <= real_possible_cause_timestamp
+                condition = previous_activity_timestamp < real_possible_cause_timestamp
             elif((previous_activity_timestamp != -1) and (real_possible_cause_timestamp == -1) and find_previous!=0):
                 condition = False
             #elif (previous_activity_timestamp != -1) and (real_possible_cause_timestamp == -1):

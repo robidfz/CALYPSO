@@ -1,5 +1,6 @@
 from PdFT_syntax_Elements.transition import Transition
 from PdFT_syntax_Elements.dynamic import Dynamic
+
 class Component:
     def __init__(self,name, code):
         self.name=name
@@ -10,6 +11,7 @@ class Component:
         self.statePriorities = {'is_up': 3, 'is_failing': 2, 'is_down': 1}
         self.transitions=list()
         self.transitionPriorities=dict()
+        self.dynamics_set=dict()
 
 
 
@@ -66,6 +68,19 @@ class Component:
         for t in self.transitions:
             priority=self.getTransitionPriority(t.structure)
             self.transitionPriorities[t]=priority
+
+
+    def addDynamic(self, dynamic_obj,threshold):
+        self.dynamics_set[dynamic_obj]=threshold
+
+    def getDynamicThreshold(self, dyn_name):
+        retval = None
+        for dynamic_obj, threshold in self.dynamics_set.items():
+            if (dynamic_obj.name == dyn_name):
+                retval = threshold
+        return retval
+
+
 
 
 

@@ -85,6 +85,14 @@ def extractPossibleTransition(df,activity_col_name,caseID_col_name,components):
     return transition_dict
 
 
+def extractPossibleSignalsEvents(df,dynamics_name,activity_col_name):
+    retval=list()
+    all_activities=df[activity_col_name].unique()
+    for d in dynamics_name:
+        retval=retval+[a for a in all_activities if a.startswith(d)]
+    return retval
+
+
 def computingProbabilityold(df, cause, effect=None):
     if (effect != None):
         c_and_x = df[(df[effect] == 1) & (df[cause] == 1)].shape[0]
@@ -162,14 +170,9 @@ def matchingElements(s1, s2, operator):
     check = (set(elements1) == set(elements2))
     return check
 
-def findOperator(s):
-    operator = 'AND'
-    index = s.find(operator)
-    if (index == -1):
-        operator = 'OR'
-    return operator
 
-def findOperatornew(s):
+
+def findOperator(s):
     possible_operatores=['AND','OR','NOT','>']
     i=0
     index=-1
@@ -200,7 +203,7 @@ def definePredicate(cause1,cause2, operand):
     return predicate
 
 def splitPredicate(s):
-    operator = findOperatornew(s)
+    operator = findOperator(s)
     if(operator==-1):
         elements =[s]
     else:
@@ -212,8 +215,13 @@ def splitPredicate(s):
 
 def splitActivity(activity):
     index0 = activity.find('_')
-    elem = activity[index0 + 1:]
-    index = elem.find('_') + index0 + 1
+    if(index0!=-1):
+
+        elem = activity[index0 + 1:]
+        index = elem.find('_') + index0 + 1
+
+    else:
+        index = activity.find('>')
     elem = activity[:index]
     occurence_name = activity[index + 1:]
     return elem, occurence_name
@@ -267,33 +275,7 @@ def splitDynamicCauses(cause):
     elem = cause[:index]
 
     return elem, threshold
-def filteringSignificantCauseswitherrors(eps_avg_dict, maximum=False):
-    cause_effect_dict=dict()
-    for effect, values in eps_avg_dict.items():
-        causes = [c[0] for c in values]
-        eps = [c[1] for c in values]
-        eps_array = np.array(eps)
-        a = eps_array.reshape(-1, 1)
-        kde = KernelDensity(kernel='gaussian', bandwidth=0.1).fit(a)
-        s = np.linspace(min(eps) - 1, max(eps) + 1, 1000)
-        e = kde.score_samples(s.reshape(-1, 1))
-        plt.plot(s, e)
-        mi, ma = argrelextrema(e, np.less)[0], argrelextrema(e, np.greater)[0]
-        plt.plot(s[:mi[0] + 1], e[:mi[0] + 1], 'r',  # Intervallo prima del primo minimo locale
-                 s[mi[0]:mi[1] + 1], e[mi[0]:mi[1] + 1], 'g',  # Intervallo tra i due minimi locali
-                 s[mi[1]:], e[mi[1]:], 'b',  # Intervallo dopo il secondo minimo locale
-                 s[ma], e[ma], 'go',  # Massimi locali
-                 s[mi], e[mi], 'ro')  # Minimi locali
 
-        plt.show()
-
-        # Seleziona i valori di epsilon che appartengono a ciascun cluster
-        cluster_1 = [val for val in eps if val <= s[mi[0]]]
-        cluster_2 = [val for val in eps if s[mi[0]] < val <= s[mi[1]]]
-        cluster_3 = [val for val in eps if val > s[mi[1]]]
-        new_causes = [(value[0], value[1]) for value in values if value[1] in cluster_3]
-        cause_effect_dict[effect] = new_causes
-    return cause_effect_dict
 
 def filteringSignificantCausesDBSCAN(eps_avg_dict, maximum=False):
     cause_effect_dict=dict()
@@ -409,7 +391,7 @@ def filteringLatestCauses(A, effect, df, activities_col_name, caseIDs_col_name, 
     return filtered_eps
 
 def findPredicateTimestamp(group,cause,activities_col_name,timestamps_col_name):
-    operator=findOperatornew(cause)
+    operator=findOperator(cause)
     preds = splitPredicate(cause)
     retval=None
     j = 0
@@ -477,7 +459,7 @@ def findPredicateTimestamp(group,cause,activities_col_name,timestamps_col_name):
 
 
 def findPredicateTimestamp_old(group,cause,activities_col_name,timestamps_col_name):
-    operator=findOperatornew(cause)
+    operator=findOperator(cause)
     preds = splitPredicate(cause)
     causes_initials=list()
     causes_finals=list()
@@ -636,7 +618,7 @@ def negateOperator(operator):
         new_operator = 'AND'
     return new_operator
 def negateCause(cause):
-    operator=findOperatornew(cause)
+    operator=findOperator(cause)
     if operator!=-1:
         elements = splitPredicate(cause)
         neg_elements=['NOT_'+ e for e in elements ]
@@ -647,3 +629,11 @@ def negateCause(cause):
     else:
         not_cause='NOT_'+cause
     return not_cause
+
+
+def difference_between_rows(row1, row2):
+
+    return [
+        a - b if a is not None and b is not None else None
+        for a, b in zip(row1, row2)
+    ]

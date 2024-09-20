@@ -6,6 +6,7 @@ from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
 from scipy.signal import argrelextrema
 import numpy as np
+import re
 from sklearn.cluster import DBSCAN
 def parsing_strings(df, column_name,expression):
 
@@ -73,10 +74,11 @@ def extractPossibleTransition(df,activity_col_name,caseID_col_name,components):
                 component,state_initial=splitActivity(act_initial)
                 act_final=following_row[activity_col_name]
                 component,state_final=splitActivity(act_final)
-                transition=[state_initial,state_final]
-                transition_actv=defineTransitionActivities(component,transition)
-                if(transition_actv not in possible_transitions):
-                    possible_transitions.append(transition_actv)
+                if(state_final!=state_initial):
+                    transition=[state_initial,state_final]
+                    transition_actv=defineTransitionActivities(component,transition)
+                    if(transition_actv not in possible_transitions):
+                        possible_transitions.append(transition_actv)
                 index=index+1
         transition_dict[c]=possible_transitions
 
@@ -637,3 +639,22 @@ def difference_between_rows(row1, row2):
         a - b if a is not None and b is not None else None
         for a, b in zip(row1, row2)
     ]
+
+def comparePredicates(pred1,pred2):
+    retval=False
+    operator_pred1 = findOperator(pred1)
+    operator_pred2 = findOperator(pred2)
+    if (operator_pred1 == operator_pred2):
+        elements_pred1 = splitPredicate(pred1)
+        elements_pred2 = splitPredicate(pred2)
+        if (sorted(elements_pred1) == sorted(elements_pred2)):
+            retval=True
+    return retval
+
+
+def numberTest(filename):
+    x=None
+    match = re.search(r'(\d+)\.csv', filename)
+    if match:
+        x = match.group(1)
+    return x

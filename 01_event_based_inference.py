@@ -14,7 +14,11 @@ from PdFT_syntax_Elements.dynamic import Dynamic
 from Methodology.primafacie import PrimaFacie
 import Methodology.utils as utils
 import Methodology.epsilons as epsilon
-import itertools
+import os
+import glob
+import time
+from memory_profiler import memory_usage
+
 
 def preprocessing(reader,df, template):
     property = reader[template]['property'].split(',')
@@ -88,7 +92,10 @@ def structureDefinition(reader,df,activity_col_name):
 
 
 
-def overallWorkflow(dataset,structure,effect_names):
+def overallWorkflow(dataset,structure,effect_names,filename):
+    start_time = time.time()
+    start_memory=memory_usage()[0]
+
     pf = PrimaFacie(dataset, caseIDs_col_name, activities_col_name, timestamps_col_name)
     col = ['Effect', 'Effect Component', 'Cause', 'Cause Component', 'Effect Input Port', 'Effect Output Port',
            'Cause Output Port', 'Event', 'Epsilon']
@@ -103,8 +110,16 @@ def overallWorkflow(dataset,structure,effect_names):
         predicates_dict=discoveringPredicates(dataset,pf,cause_effect_dict)
         structure,predicate_df=buildingSemantics(predicates_dict,structure,predicate_df)
 
-    structure_df.to_csv('PdFT_structure.csv', index=False)
-    predicate_df.to_csv('PdFT_predicate.csv',index=False)
+
+
+    test_name=utils.numberTest(filename)
+    end_time = time.time()
+    end_memory = memory_usage()[0]
+    execution_time=end_time-start_time
+    mem_usage=end_memory-start_memory
+    structure_df.to_csv('PdFT_structure_TTV_'+str(test_name)+'.csv', index=False)
+    predicate_df.to_csv('PdFT_predicate_TTV_'+str(test_name)+'.csv',index=False)
+    return execution_time,mem_usage
 
 def discoveringStructure(dataset,structure,t,pf):
     cause_effect_dict=dict()
@@ -164,40 +179,44 @@ def structureVisualisation(structure,structure_df,cause_effect_dict):
             operator=utils.findOperator(cause)
             cause_comp, occ_name = utils.splitActivity(cause)
             #controllare se la connessione nella struttura non è stata già trovata con la componente o la dinamica
-            if(cause_comp not in connected_objects):
 
-                if(operator=='>'):
-                    cause_obj=structure.findDynamic(cause_comp)
-                    input_port=None
-                    event_name=None
-                    cause_output_port=None
 
-                else:
-                    cause_obj = structure.findComponent(cause_comp)
-                    input_port='p_{' + str(effect_obj.extractPedix())+','+str(cause_obj.extractPedix())+'}'
+            if(operator=='>'):
+                cause_obj=structure.findDynamic(cause_comp)
+                if (cause_comp not in connected_objects):
+                    effect_obj.addDynamic(cause_obj,occ_name)
+                input_port=None
+                event_name=None
+                cause_output_port=None
+
+            else:
+                cause_obj = structure.findComponent(cause_comp)
+                input_port='p_{' + str(effect_obj.extractPedix())+','+str(cause_obj.extractPedix())+'}'
+                if (cause_comp not in connected_objects):
                     effect_obj.addInputPort(input_port)
                     event=Event('e_' + str(counter),cause_obj.output_port,input_port,eps[k])
-                    cause_output_port = event.structure[0]
-                    event_name=event.name
                     structure.addEvent(event)
+                cause_output_port = cause_obj.output_port
+                event_name='e_' + str(counter)
 
-                row=dict()
-                row[col[0]]=effect
-                row[col[1]]=effect_obj.code
-                row[col[2]] = cause
-                row[col[3]] = cause_obj.code
-                row[col[4]] = input_port
-                row[col[5]] = effect_obj.output_port
-                row[col[6]] = cause_output_port
-                row[col[7]] = event_name
-                row[col[8]] = eps[k]
-                structure_df.loc[len(structure_df)] = row
-                ant=cause
-                G.add_node(ant,name=cause_obj.code)
-                G.add_node(cons,name=effect_obj.code)
-                G.add_edge(ant, cons, name='e_' + str(counter) ,weight=round(eps[k],4))
-                significant_causes.append([cause_comp,eps[k]])
-                counter+=1
+
+            row=dict()
+            row[col[0]]=effect
+            row[col[1]]=effect_obj.code
+            row[col[2]] = cause
+            row[col[3]] = cause_obj.code
+            row[col[4]] = input_port
+            row[col[5]] = effect_obj.output_port
+            row[col[6]] = cause_output_port
+            row[col[7]] = event_name
+            row[col[8]] = eps[k]
+            structure_df.loc[len(structure_df)] = row
+            ant=cause
+            G.add_node(ant,name=cause_obj.code)
+            G.add_node(cons,name=effect_obj.code)
+            G.add_edge(ant, cons, name='e_' + str(counter) ,weight=round(eps[k],4))
+            significant_causes.append([cause_comp,eps[k]])
+            counter+=1
 
 
         significant_causes_dict[effect_comp]=significant_causes
@@ -258,8 +277,8 @@ def buildingSemantics(cause_effect_dict,structure,predicate_df):
             predicate = ''
             for e in elems:
                 operator=utils.findOperator(e)
-                if(operator=='>' or operator==-1):
-                    predicate=predicate+cause
+                if(operator=='>'):
+                    predicate=predicate+e
                 else:
                     cause_comp, occ_name = utils.splitActivity(e)
                     cause_obj = structure.findComponent(cause_comp)
@@ -294,21 +313,39 @@ def buildingSemantics(cause_effect_dict,structure,predicate_df):
 if __name__ == "__main__":
     if len(sys.argv) == 3:
         configfile_name = sys.argv[1]
-        dataset_name = sys.argv[2]
-        reader = ConfigParser()
-        reader.read(configfile_name)
-        E = pd.read_csv(dataset_name)
-        activities_col_name = eval(reader['DATASET']['activities_col'])[0]
-        structure_effects_names = eval(reader['INFERENCE']['structure_effects'])
-        caseIDs_col_name = eval(reader['DATASET']['caseID_col'])[0]
-        timestamps_col_name = eval(reader['DATASET']['timestamp_col'])[0]
-        predicates_effects_names = eval(reader['INFERENCE']['predicates_effects'])
-        dynamics_effect_names=eval(reader['INFERENCE']['dynamics_effects'])
-        #E = E[(~E[activities_col_name].str.endswith('under_repair'))]
-        template='PREPROCESSING_SETTING'
-        E=preprocessing(reader,E,template)
-        structure = structureDefinition(reader, E, activities_col_name)
-        overallWorkflow(E,structure,predicates_effects_names)
+        dataset = sys.argv[2]
+        folder = os.getcwd()
+        pattern = os.path.join(folder, dataset+"*")
+        file_list = glob.glob(pattern)
+        results=pd.DataFrame(columns=['TEST','TIME','MEMORY'])
+
+
+
+        #file_list = [file for file in file_list if not (file.endswith('TEST1') or file.endswith('TEST2') or file.endswith('TEST3') or file.endswith('TEST0') or file.endswith('TEST4') or file.endswith('TEST5'))]
+
+        #dataset_name='causality_dataset.csv'
+        for filename in file_list:
+            row = dict()
+            reader = ConfigParser()
+            reader.read(configfile_name)
+            E = pd.read_csv(filename)
+            activities_col_name = eval(reader['DATASET']['activities_col'])[0]
+            structure_effects_names = eval(reader['INFERENCE']['structure_effects'])
+            caseIDs_col_name = eval(reader['DATASET']['caseID_col'])[0]
+            timestamps_col_name = eval(reader['DATASET']['timestamp_col'])[0]
+            predicates_effects_names = eval(reader['INFERENCE']['predicates_effects'])
+            dynamics_effect_names=eval(reader['INFERENCE']['dynamics_effects'])
+            #E = E.head(100)
+            template='PREPROCESSING_SETTING'
+            #E=preprocessing(reader,E,template)
+            structure = structureDefinition(reader, E, activities_col_name)
+            exe_time,mem_usage=overallWorkflow(E,structure,predicates_effects_names,filename)
+            test_name='TEST'+str(utils.numberTest(filename))
+            row['TEST']=test_name
+            row['TIME']=exe_time
+            row['MEMORY']=mem_usage
+            results.loc[len(results)]=row
+        results.to_csv('performances.csv',index=False)
 
 
 

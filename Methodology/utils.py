@@ -31,6 +31,34 @@ def parsing_strings(df, column_name,expression):
     else:
         raise ValueError("Operator not defined")
     return result
+
+def addColumn1(dataset,column_dict,features,output):
+    new_col = list()
+    for i, row in dataset.iterrows():
+        for key,values in column_dict.items():
+            if(row[features].startswith(key)):
+                new_val = row[features]+"_"+str(row[values])
+                new_val=new_val.replace(' ','_')
+                new_col.append(new_val)
+    dataset[output] = new_col
+    return dataset
+def addColumn2(dataset,feature,value,output):
+    new_col=list()
+    for i, row in dataset.iterrows():
+        val = row[feature].replace(" ", "_")
+        flag=0
+        for v in value:
+            if(val.endswith(v[1])):
+                elem= v[0]
+                new_col.append(elem)
+                flag=1
+        if(flag==0):
+            elem=value[2][0]
+            new_col.append(elem)
+
+    dataset[output] = new_col
+    return dataset
+
 def addingUpState(df,activities_col_name,caseIDs_col_name,timestamps_col_name):
     act = df[activities_col_name].unique()
     components = extractComponents(act)
@@ -252,7 +280,12 @@ def splitTransitionActivities(transition_activity):
         final_state =transition_activity
     return initial_state, final_state
 
-
+def extractTransition(effect):
+    initial_state, final_state = splitTransitionActivities(effect)
+    e_comp, initial_state = splitActivity(initial_state)
+    e_comp, final_state = splitActivity(final_state)
+    transition_effect = (initial_state, final_state)
+    return transition_effect
 
 def extractComponents(activities):
     activities = pd.Series(activities)
@@ -279,46 +312,7 @@ def splitDynamicCauses(cause):
     return elem, threshold
 
 
-def filteringSignificantCausesDBSCAN(eps_avg_dict, maximum=False):
-    cause_effect_dict=dict()
-    for effect, values in eps_avg_dict.items():
-        causes = [c[0] for c in values]
-        eps = [c[1] for c in values]
-        if len(eps)!=0:
-            eps_array = np.array(eps)
-            a = eps_array.reshape(-1, 1)
 
-
-            # Dati
-
-
-            # Applica DBSCAN
-            db = DBSCAN(eps=0.05, min_samples=1).fit(a)
-
-            # Estrai i cluster
-            labels = db.labels_
-
-            # Identifica i cluster unici
-            unique_labels = set(labels)
-
-            # Trova il cluster con i valori medi più alti
-            clusters = {}
-            for label in unique_labels:
-                if label != -1:  # Ignora il rumore
-                    cluster_data = a[labels == label]
-                    clusters[label] = cluster_data.mean()
-
-            # Trova il cluster con la media più alta
-            best_cluster_label = max(clusters, key=clusters.get)
-            best_cluster_data = a[labels == best_cluster_label]
-
-
-
-            new_causes = [(value[0], value[1]) for value in values if value[1] in best_cluster_data]
-        else:
-            new_causes=[]
-        cause_effect_dict[effect] = new_causes
-    return cause_effect_dict
 
 
 def filteringSignificantCauses(eps_avg_dict, maximum=False):
@@ -657,4 +651,8 @@ def numberTest(filename):
     match = re.search(r'(\d+)\.csv', filename)
     if match:
         x = match.group(1)
-    return x
+    if(x==None):
+        name='.csv'
+    else:
+        name='_TTV_'+str(x)+'.csv'
+    return x,name

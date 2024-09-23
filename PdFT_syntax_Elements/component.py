@@ -8,10 +8,10 @@ class Component:
         self.input_ports=list()
         self.output_port='p_{'+str(self.extractPedix())+'}'
         self.states=list()
-        self.statePriorities = {'is_up': 3, 'is_failing': 2, 'is_down': 1}
         self.transitions=list()
-        self.transitionPriorities=dict()
         self.dynamics_set=dict()
+        self.trigger=dict()
+        self.alpha=dict()
 
 
 
@@ -26,9 +26,8 @@ class Component:
         for i,s1 in enumerate(self.states):
             for j in range(i+1,len(self.states)):
                 s2=self.states[j]
-                self.transitions.append(Transition(s1,s2))
-                self.transitions.append(Transition(s2, s1))
-        self.defineTransitionPriorities()
+                self.transitions.append((s1,s2))
+                self.transitions.append((s2, s1))
 
     def findTransition(self,s1,s2):
         struct=(s1,s2)
@@ -54,20 +53,6 @@ class Component:
         self.states=states
         self.defineTransitions()
 
-    def setStatePriority(self,state,priority):
-        self.statePriorities[state]=priority
-
-
-    def getTransitionPriority(self,t):
-        initial_state_priority=self.statePriorities[t[0]]
-        final_state_priority=self.statePriorities[t[1]]
-        transition_priority= initial_state_priority-final_state_priority
-        return transition_priority
-
-    def defineTransitionPriorities(self):
-        for t in self.transitions:
-            priority=self.getTransitionPriority(t.structure)
-            self.transitionPriorities[t]=priority
 
 
     def addDynamic(self, dynamic_obj,threshold):
@@ -79,6 +64,20 @@ class Component:
             if (dynamic_obj.name == dyn_name):
                 retval = threshold
         return retval
+
+    def setTrigger(self, transition,predicate):
+        if(transition in self.transitions):
+            self.trigger[transition]=predicate
+
+
+    def setAlpha(self, transition, active_flag):
+        if active_flag:
+            if ((transition in self.transitions) and (transition not in self.alpha.keys())):
+                self.alpha[(transition[0],transition[1])]=1
+                self.alpha[(transition[1],transition[0])]=0
+        else:
+            self.alpha[transition] = -1
+
 
 
 

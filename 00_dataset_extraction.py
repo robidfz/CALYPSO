@@ -3,7 +3,7 @@ import pandas as pd
 import sys
 import numpy as np
 import ast
-
+from Methodology import utils
 
 def convert_to_numeric(value):
     try:
@@ -94,51 +94,9 @@ def dataset_checking(df,report_file,reader):
 
 
 
-def caseID_definition(df,column,value,name):
-    counter=0
-    caseID=list()
-    i=0
-    while(i<len(df[column])):
 
-        while(i<len(df[column]) and df[column][i].endswith(value) ):
-            caseID.append(counter)
-            i=i+1
-        counter = counter + 1
-        while(i<len(df[column]) and not df[column][i].endswith(value) ):
-            caseID.append(counter)
-            i = i + 1
-        counter = counter + 1
 
-    df[name]=caseID
-    return df
-def addColumn1(dataset,column_dict,features,output):
-    new_col = list()
-    for i, row in dataset.iterrows():
-        for key,values in column_dict.items():
-            if(row[features].startswith(key)):
-                new_val = row[features]+"_"+str(row[values])
-                new_val=new_val.replace(' ','_')
-                new_col.append(new_val)
-    dataset[output] = new_col
-    print('fatto')
-    return dataset
-def addColumn2(dataset,feature,value,output):
-    new_col=list()
-    for i, row in dataset.iterrows():
-        val = row[feature].replace(" ", "_")
-        flag=0
-        for v in value:
-            if(val.endswith(v[1])):
-                elem= v[0]
-                new_col.append(elem)
-                flag=1
-        if(flag==0):
-            elem=value[2][0]
-            new_col.append(elem)
-
-    dataset[output] = new_col
-    return dataset
-def preprocessing(reader,df,template):
+def preprocessing_step1(reader,df,template):
     property=reader[template]['property'].split(',')
     features=eval(reader[template]['feature'])
     value=eval(reader[template]['value'])
@@ -164,9 +122,9 @@ def preprocessing(reader,df,template):
         elif(p=='add_column1'):
             #t=ast.literal_eval(actual_values)
             column_dict = dict(actual_values)
-            df=addColumn1(df,column_dict,actual_features[0],actual_output[0])
+            df=utils.addColumn1(df,column_dict,actual_features[0],actual_output[0])
         elif(p=='add_column2'):
-            df = addColumn2(df, actual_features[0], actual_values, actual_output[0])
+            df = utils.addColumn2(df, actual_features[0], actual_values, actual_output[0])
         elif(p=='renaming'):
             new_columns=dict()
             for i,v in enumerate(actual_features):
@@ -182,7 +140,48 @@ def preprocessing(reader,df,template):
 
 
 
+def preprocessing_step2(reader,df, template):
+    property = reader[template]['property'].split(',')
+    features = eval(reader[template]['feature'])
+    value = eval(reader[template]['value'])
+    output = eval(reader[template]['output'])
+    filename = eval(reader[template]['filename'])[0]
 
+    for i, p in enumerate(property):
+        actual_features = features[i]
+        actual_values = value[i]
+        actual_output = output[i]
+
+        if (p == 'filtering1'):
+            # filter excluding debug records from simulator dataset that are stored in Warning level
+            inference_df= utils.parsing_strings(df, actual_features[0], actual_values[0])
+        if(p=='filtering2'):
+            groups=df.groupby(caseIDs_col_name)
+            col_name = actual_features[0]
+            col_name2 = actual_features[1]
+            for index, group in groups:
+                for i, values in enumerate(actual_values):
+                    col_value = values[0]
+                    col_value2 = values[1]
+                    df_1=utils.parsing_strings(group, col_name, col_value)
+                    df_2=utils.parsing_strings(df_1, col_name2, col_value2)
+                    df_2.sort_values([timestamps_col_name],inplace=True, ascending=True)
+                    if(df_2.shape[0]>0):
+                        adding_row=df_2.iloc[0]
+                        col_to_rename=actual_output[i][0]
+                        new_name=actual_output[i][1]
+                        adding_row[col_to_rename] = new_name
+                        inference_df.loc[len(inference_df)]=adding_row
+                        #inference_df=pd.concat([inference_df,adding_row], axis=0)
+
+
+
+
+    inference_df.sort_values([timestamps_col_name],inplace=True)
+    inference_df=utils.addingUpState(inference_df,activities_col_name,caseIDs_col_name,timestamps_col_name)
+    inference_df.to_csv(filename, index=False)
+
+    return inference_df
 
 if __name__ == "__main__":
     if len(sys.argv) == 4:
@@ -191,15 +190,22 @@ if __name__ == "__main__":
         filename=sys.argv[3]
         reader = ConfigParser()
         reader.read(config)
+        activities_col_name = eval(reader['DATASET']['activities_col'])[0]
+        structure_effects_names = eval(reader['INFERENCE']['structure_effects'])
+        caseIDs_col_name = eval(reader['DATASET']['caseID_col'])[0]
+        timestamps_col_name = eval(reader['DATASET']['timestamp_col'])[0]
         df=dataset_creation(dataset,reader)
         dataset_checking(df,filename,reader)
         print(df.shape)
-        template='preprocessing_setting'
-        df=preprocessing(reader,df,template)
+        template='preprocessing_step1_setting'
+        df=preprocessing_step1(reader,df,template)
+        template = 'dataset_timeseries_setting'
+        df_timeseries = preprocessing_step1(reader, df, template)
+        template = 'preprocessing_step2_setting'
+        df = preprocessing_step2(reader, df, template)
         #template = 'dataset_inference_setting'
         #df_inference = preprocessing(reader, df, template)
-        template = 'dataset_timeseries_setting'
-        df_timeseries = preprocessing(reader, df, template)
+
 
 
 

@@ -67,12 +67,14 @@ def computeMetrics(dataset,ground_truth,file):
 
 def heuristicsDefinition(dataset,k):
     values=dataset['Epsilon']
+    values_number=dataset.shape[0]
     sum=0
     for v in values:
         if(v>=0.5):
             sum=sum+(v*k)
         else:
             sum=sum+(v/k)
+    sum=sum/values_number
     return sum
 
 def computeHeuristics(dataset,k_value,file,metric):
@@ -134,7 +136,8 @@ if __name__ == "__main__":
             row=dict()
             filename=file_list[i]
             file.write(file_list[i]+':\n')
-            row['TEST']='TEST'+str(utils.numberTest(filename))
+            number,test_name_csv=utils.numberTest(filename)
+            row['TEST']='TEST'+str(number)
             #ground_truth_name='ground_truth.csv'
             #dataset_name_new=dataset_name+test+'.csv'
             dataset = pd.read_csv(file_list[i])

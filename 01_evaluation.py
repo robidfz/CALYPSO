@@ -1,6 +1,6 @@
 import sys
 import pandas as pd
-from Methodology import utils
+from Causality_analysis_modules import utils
 import os
 import glob
 from configparser import ConfigParser
@@ -74,7 +74,7 @@ def heuristicsDefinition(dataset,k):
             sum=sum+(v*k)
         else:
             sum=sum+(v/k)
-    sum=sum/values_number
+    sum=sum/(values_number*k)
     return sum
 
 def computeHeuristics(dataset,k_value,file,metric):
@@ -110,16 +110,17 @@ if __name__ == "__main__":
         reader = ConfigParser()
         reader.read(configfile_name)
         metrics= eval(reader['EVALUATION']['metrics'])
+        ground_truth = pd.read_csv(ground_truth_structure, sep=',')
+        ground_truth_preds = pd.read_csv(ground_truth_predicate, sep=',')
         metrics.insert(0,'TEST')
         results=pd.DataFrame(columns=metrics)
         folder=os.getcwd()
-        pattern = os.path.join(folder, structures_name + "*")
+        folder=folder+('\\TEST')
+        pattern = os.path.join(folder,  "*"+structures_name )
         file_list = glob.glob(pattern)
-        pattern= os.path.join(folder, predicates_name + "*")
+        pattern= os.path.join(folder,  "*"+predicates_name )
         file_list_preds = glob.glob(pattern)
         deltas=dict()
-        ground_truth = pd.read_csv(ground_truth_structure, sep=',')
-        ground_truth_preds=pd.read_csv(ground_truth_predicate, sep=',')
         file.write('TEST0:\n')
         row=dict()
         row['TEST']='original_dataset'
@@ -136,8 +137,8 @@ if __name__ == "__main__":
             row=dict()
             filename=file_list[i]
             file.write(file_list[i]+':\n')
-            number,test_name_csv=utils.numberTest(filename)
-            row['TEST']='TEST'+str(number)
+            number=utils.numberTest(filename)
+            row['TEST']='TEST'+number
             #ground_truth_name='ground_truth.csv'
             #dataset_name_new=dataset_name+test+'.csv'
             dataset = pd.read_csv(file_list[i])

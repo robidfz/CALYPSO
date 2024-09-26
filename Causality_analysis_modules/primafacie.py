@@ -1,4 +1,4 @@
-import Methodology.utils as utils
+import Causality_analysis_modules.utils as utils
 class PrimaFacie:
     def __init__(self,df,caseIDs_col_name,activities_col_name,timestamps_col_name):
         self.df=df

@@ -7,7 +7,31 @@ import matplotlib.pyplot as plt
 from scipy.signal import argrelextrema
 import numpy as np
 import re
+import random
 from sklearn.cluster import DBSCAN
+
+def addNoise(df,activities_col_name, caseIDs_col_name, timestamps_col_name,percentage_in_caseID, percentage_of_caseID):
+    percentage_in_caseID=int(percentage_in_caseID)
+    percentage_of_caseID=int(percentage_of_caseID)
+    activities=df[activities_col_name].unique().tolist()
+    cases=df[caseIDs_col_name].unique().tolist()
+    times= int((len(cases)*percentage_of_caseID)/100)
+    for i in range(times):
+        case = random.choice(cases)
+        timestamps=df[df[caseIDs_col_name]==case][timestamps_col_name]
+        timestamp_min = min(timestamps)
+        timestamp_max = max(timestamps)
+        number_rows_tot=len(timestamps)
+        number_new_rows=int((number_rows_tot*percentage_in_caseID)/100)
+        for j in range(number_new_rows):
+            act = random.choice(activities)
+            timestamp=random.uniform(timestamp_min,timestamp_max)
+            new_line = {caseIDs_col_name:case,timestamps_col_name:timestamp,activities_col_name:act}
+            df = df.append(new_line, ignore_index=True)
+    df=df.sort_values(by=timestamps_col_name)
+    #df.to_csv('Threat_to_validity_TEST'+str(number_test)+'.csv',index=False)
+    return df
+
 def parsing_strings(df, column_name,expression):
 
     if expression.startswith("<"):
@@ -58,6 +82,12 @@ def addColumn2(dataset,feature,value,output):
 
     dataset[output] = new_col
     return dataset
+
+def convert_to_numeric(value):
+    try:
+        return pd.to_numeric(value)
+    except ValueError:
+        return value
 
 def addingUpState(df,activities_col_name,caseIDs_col_name,timestamps_col_name):
     act = df[activities_col_name].unique()
@@ -647,12 +677,11 @@ def comparePredicates(pred1,pred2):
 
 
 def numberTest(filename):
-    x=None
-    match = re.search(r'(\d+)\.csv', filename)
+    match = re.search(r'TEST(\d+)', filename)
+
     if match:
-        x = match.group(1)
-    if(x==None):
-        name='.csv'
+        numero = match.group(1)
+
     else:
-        name='_TTV_'+str(x)+'.csv'
-    return x,name
+        numero=None
+    return numero

@@ -1,6 +1,3 @@
-from PdFT_syntax_Elements.transition import Transition
-from PdFT_syntax_Elements.dynamic import Dynamic
-
 class Component:
     def __init__(self,name, code):
         self.name=name

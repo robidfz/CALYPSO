@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy import stats
-import Methodology.utils as utils
+import Causality_analysis_modules.utils as utils
 
 
 

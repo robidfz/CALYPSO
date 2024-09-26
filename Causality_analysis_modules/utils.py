@@ -1,14 +1,9 @@
 import pandas as pd
-import numpy as np
 import itertools
-from numpy import array, linspace
-from sklearn.neighbors import KernelDensity
-import matplotlib.pyplot as plt
-from scipy.signal import argrelextrema
+import os
 import numpy as np
-import re
 import random
-from sklearn.cluster import DBSCAN
+
 
 def addNoise(df,activities_col_name, caseIDs_col_name, timestamps_col_name,percentage_in_caseID, percentage_of_caseID):
     percentage_in_caseID=int(percentage_in_caseID)
@@ -679,11 +674,7 @@ def comparePredicates(pred1,pred2):
 
 
 def numberTest(filename):
-    match = re.search(r'TEST(\d+)', filename)
-
-    if match:
-        numero = match.group(1)
-
-    else:
-        numero=None
-    return numero
+    filename = os.path.basename(filename)
+    filename_no_ext = os.path.splitext(filename)[0]
+    result = filename_no_ext.split('_PdFT')[0]
+    return result

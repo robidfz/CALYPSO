@@ -26,8 +26,10 @@ def addNoise(df,activities_col_name, caseIDs_col_name, timestamps_col_name,perce
         for j in range(number_new_rows):
             act = random.choice(activities)
             timestamp=random.uniform(timestamp_min,timestamp_max)
-            new_line = {caseIDs_col_name:case,timestamps_col_name:timestamp,activities_col_name:act}
-            df = df.append(new_line, ignore_index=True)
+            new_line = {caseIDs_col_name:[case],timestamps_col_name:[timestamp],activities_col_name:[act]}
+            df_new_row = pd.DataFrame.from_records(new_line)
+            df = pd.concat([df, df_new_row])
+            #df = df.append(new_line, ignore_index=True)
     df=df.sort_values(by=timestamps_col_name)
     #df.to_csv('Threat_to_validity_TEST'+str(number_test)+'.csv',index=False)
     return df

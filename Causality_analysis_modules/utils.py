@@ -6,7 +6,32 @@ from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
 from scipy.signal import argrelextrema
 import numpy as np
+import re
+import random
 from sklearn.cluster import DBSCAN
+
+def addNoise(df,activities_col_name, caseIDs_col_name, timestamps_col_name,percentage_in_caseID, percentage_of_caseID):
+    percentage_in_caseID=int(percentage_in_caseID)
+    percentage_of_caseID=int(percentage_of_caseID)
+    activities=df[activities_col_name].unique().tolist()
+    cases=df[caseIDs_col_name].unique().tolist()
+    times= int((len(cases)*percentage_of_caseID)/100)
+    for i in range(times):
+        case = random.choice(cases)
+        timestamps=df[df[caseIDs_col_name]==case][timestamps_col_name]
+        timestamp_min = min(timestamps)
+        timestamp_max = max(timestamps)
+        number_rows_tot=len(timestamps)
+        number_new_rows=int((number_rows_tot*percentage_in_caseID)/100)
+        for j in range(number_new_rows):
+            act = random.choice(activities)
+            timestamp=random.uniform(timestamp_min,timestamp_max)
+            new_line = {caseIDs_col_name:case,timestamps_col_name:timestamp,activities_col_name:act}
+            df = df.append(new_line, ignore_index=True)
+    df=df.sort_values(by=timestamps_col_name)
+    #df.to_csv('Threat_to_validity_TEST'+str(number_test)+'.csv',index=False)
+    return df
+
 def parsing_strings(df, column_name,expression):
 
     if expression.startswith("<"):
@@ -30,6 +55,40 @@ def parsing_strings(df, column_name,expression):
     else:
         raise ValueError("Operator not defined")
     return result
+
+def addColumn1(dataset,column_dict,features,output):
+    new_col = list()
+    for i, row in dataset.iterrows():
+        for key,values in column_dict.items():
+            if(row[features].startswith(key)):
+                new_val = row[features]+"_"+str(row[values])
+                new_val=new_val.replace(' ','_')
+                new_col.append(new_val)
+    dataset[output] = new_col
+    return dataset
+def addColumn2(dataset,feature,value,output):
+    new_col=list()
+    for i, row in dataset.iterrows():
+        val = row[feature].replace(" ", "_")
+        flag=0
+        for v in value:
+            if(val.endswith(v[1])):
+                elem= v[0]
+                new_col.append(elem)
+                flag=1
+        if(flag==0):
+            elem=value[2][0]
+            new_col.append(elem)
+
+    dataset[output] = new_col
+    return dataset
+
+def convert_to_numeric(value):
+    try:
+        return pd.to_numeric(value)
+    except ValueError:
+        return value
+
 def addingUpState(df,activities_col_name,caseIDs_col_name,timestamps_col_name):
     act = df[activities_col_name].unique()
     components = extractComponents(act)
@@ -73,16 +132,25 @@ def extractPossibleTransition(df,activity_col_name,caseID_col_name,components):
                 component,state_initial=splitActivity(act_initial)
                 act_final=following_row[activity_col_name]
                 component,state_final=splitActivity(act_final)
-                transition=[state_initial,state_final]
-                transition_actv=defineTransitionActivities(component,transition)
-                if(transition_actv not in possible_transitions):
-                    possible_transitions.append(transition_actv)
+                if(state_final!=state_initial):
+                    transition=[state_initial,state_final]
+                    transition_actv=defineTransitionActivities(component,transition)
+                    if(transition_actv not in possible_transitions):
+                        possible_transitions.append(transition_actv)
                 index=index+1
         transition_dict[c]=possible_transitions
 
 
 
     return transition_dict
+
+
+def extractPossibleSignalsEvents(df,dynamics_name,activity_col_name):
+    retval=list()
+    all_activities=df[activity_col_name].unique()
+    for d in dynamics_name:
+        retval=retval+[a for a in all_activities if a.startswith(d)]
+    return retval
 
 
 def computingProbabilityold(df, cause, effect=None):
@@ -162,14 +230,9 @@ def matchingElements(s1, s2, operator):
     check = (set(elements1) == set(elements2))
     return check
 
-def findOperator(s):
-    operator = 'AND'
-    index = s.find(operator)
-    if (index == -1):
-        operator = 'OR'
-    return operator
 
-def findOperatornew(s):
+
+def findOperator(s):
     possible_operatores=['AND','OR','NOT','>']
     i=0
     index=-1
@@ -200,7 +263,7 @@ def definePredicate(cause1,cause2, operand):
     return predicate
 
 def splitPredicate(s):
-    operator = findOperatornew(s)
+    operator = findOperator(s)
     if(operator==-1):
         elements =[s]
     else:
@@ -212,8 +275,13 @@ def splitPredicate(s):
 
 def splitActivity(activity):
     index0 = activity.find('_')
-    elem = activity[index0 + 1:]
-    index = elem.find('_') + index0 + 1
+    if(index0!=-1):
+
+        elem = activity[index0 + 1:]
+        index = elem.find('_') + index0 + 1
+
+    else:
+        index = activity.find('>')
     elem = activity[:index]
     occurence_name = activity[index + 1:]
     return elem, occurence_name
@@ -242,7 +310,12 @@ def splitTransitionActivities(transition_activity):
         final_state =transition_activity
     return initial_state, final_state
 
-
+def extractTransition(effect):
+    initial_state, final_state = splitTransitionActivities(effect)
+    e_comp, initial_state = splitActivity(initial_state)
+    e_comp, final_state = splitActivity(final_state)
+    transition_effect = (initial_state, final_state)
+    return transition_effect
 
 def extractComponents(activities):
     activities = pd.Series(activities)
@@ -267,74 +340,9 @@ def splitDynamicCauses(cause):
     elem = cause[:index]
 
     return elem, threshold
-def filteringSignificantCauseswitherrors(eps_avg_dict, maximum=False):
-    cause_effect_dict=dict()
-    for effect, values in eps_avg_dict.items():
-        causes = [c[0] for c in values]
-        eps = [c[1] for c in values]
-        eps_array = np.array(eps)
-        a = eps_array.reshape(-1, 1)
-        kde = KernelDensity(kernel='gaussian', bandwidth=0.1).fit(a)
-        s = np.linspace(min(eps) - 1, max(eps) + 1, 1000)
-        e = kde.score_samples(s.reshape(-1, 1))
-        plt.plot(s, e)
-        mi, ma = argrelextrema(e, np.less)[0], argrelextrema(e, np.greater)[0]
-        plt.plot(s[:mi[0] + 1], e[:mi[0] + 1], 'r',  # Intervallo prima del primo minimo locale
-                 s[mi[0]:mi[1] + 1], e[mi[0]:mi[1] + 1], 'g',  # Intervallo tra i due minimi locali
-                 s[mi[1]:], e[mi[1]:], 'b',  # Intervallo dopo il secondo minimo locale
-                 s[ma], e[ma], 'go',  # Massimi locali
-                 s[mi], e[mi], 'ro')  # Minimi locali
-
-        plt.show()
-
-        # Seleziona i valori di epsilon che appartengono a ciascun cluster
-        cluster_1 = [val for val in eps if val <= s[mi[0]]]
-        cluster_2 = [val for val in eps if s[mi[0]] < val <= s[mi[1]]]
-        cluster_3 = [val for val in eps if val > s[mi[1]]]
-        new_causes = [(value[0], value[1]) for value in values if value[1] in cluster_3]
-        cause_effect_dict[effect] = new_causes
-    return cause_effect_dict
-
-def filteringSignificantCausesDBSCAN(eps_avg_dict, maximum=False):
-    cause_effect_dict=dict()
-    for effect, values in eps_avg_dict.items():
-        causes = [c[0] for c in values]
-        eps = [c[1] for c in values]
-        if len(eps)!=0:
-            eps_array = np.array(eps)
-            a = eps_array.reshape(-1, 1)
-
-
-            # Dati
-
-
-            # Applica DBSCAN
-            db = DBSCAN(eps=0.05, min_samples=1).fit(a)
-
-            # Estrai i cluster
-            labels = db.labels_
-
-            # Identifica i cluster unici
-            unique_labels = set(labels)
-
-            # Trova il cluster con i valori medi più alti
-            clusters = {}
-            for label in unique_labels:
-                if label != -1:  # Ignora il rumore
-                    cluster_data = a[labels == label]
-                    clusters[label] = cluster_data.mean()
-
-            # Trova il cluster con la media più alta
-            best_cluster_label = max(clusters, key=clusters.get)
-            best_cluster_data = a[labels == best_cluster_label]
 
 
 
-            new_causes = [(value[0], value[1]) for value in values if value[1] in best_cluster_data]
-        else:
-            new_causes=[]
-        cause_effect_dict[effect] = new_causes
-    return cause_effect_dict
 
 
 def filteringSignificantCauses(eps_avg_dict, maximum=False):
@@ -409,7 +417,7 @@ def filteringLatestCauses(A, effect, df, activities_col_name, caseIDs_col_name, 
     return filtered_eps
 
 def findPredicateTimestamp(group,cause,activities_col_name,timestamps_col_name):
-    operator=findOperatornew(cause)
+    operator=findOperator(cause)
     preds = splitPredicate(cause)
     retval=None
     j = 0
@@ -477,7 +485,7 @@ def findPredicateTimestamp(group,cause,activities_col_name,timestamps_col_name):
 
 
 def findPredicateTimestamp_old(group,cause,activities_col_name,timestamps_col_name):
-    operator=findOperatornew(cause)
+    operator=findOperator(cause)
     preds = splitPredicate(cause)
     causes_initials=list()
     causes_finals=list()
@@ -636,7 +644,7 @@ def negateOperator(operator):
         new_operator = 'AND'
     return new_operator
 def negateCause(cause):
-    operator=findOperatornew(cause)
+    operator=findOperator(cause)
     if operator!=-1:
         elements = splitPredicate(cause)
         neg_elements=['NOT_'+ e for e in elements ]
@@ -647,3 +655,33 @@ def negateCause(cause):
     else:
         not_cause='NOT_'+cause
     return not_cause
+
+
+def difference_between_rows(row1, row2):
+
+    return [
+        a - b if a is not None and b is not None else None
+        for a, b in zip(row1, row2)
+    ]
+
+def comparePredicates(pred1,pred2):
+    retval=False
+    operator_pred1 = findOperator(pred1)
+    operator_pred2 = findOperator(pred2)
+    if (operator_pred1 == operator_pred2):
+        elements_pred1 = splitPredicate(pred1)
+        elements_pred2 = splitPredicate(pred2)
+        if (sorted(elements_pred1) == sorted(elements_pred2)):
+            retval=True
+    return retval
+
+
+def numberTest(filename):
+    match = re.search(r'TEST(\d+)', filename)
+
+    if match:
+        numero = match.group(1)
+
+    else:
+        numero=None
+    return numero

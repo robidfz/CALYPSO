@@ -48,6 +48,11 @@ class PdFT:
             c_list.append(c.name)
         return c_list
 
+    def getDynamicsNames(self):
+        c_list=list()
+        for c in self.dynamics:
+            c_list.append(c.name)
+        return c_list
     def findConnectedComponents(self,c_name):
         comp_input=self.findComponent(c_name)
         port_input=comp_input.input_ports

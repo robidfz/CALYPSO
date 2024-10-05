@@ -1,14 +1,9 @@
 import pandas as pd
-import numpy as np
 import itertools
-from numpy import array, linspace
-from sklearn.neighbors import KernelDensity
-import matplotlib.pyplot as plt
-from scipy.signal import argrelextrema
+import os
 import numpy as np
-import re
 import random
-from sklearn.cluster import DBSCAN
+
 
 def addNoise(df,activities_col_name, caseIDs_col_name, timestamps_col_name,percentage_in_caseID, percentage_of_caseID):
     percentage_in_caseID=int(percentage_in_caseID)
@@ -26,8 +21,10 @@ def addNoise(df,activities_col_name, caseIDs_col_name, timestamps_col_name,perce
         for j in range(number_new_rows):
             act = random.choice(activities)
             timestamp=random.uniform(timestamp_min,timestamp_max)
-            new_line = {caseIDs_col_name:case,timestamps_col_name:timestamp,activities_col_name:act}
-            df = df.append(new_line, ignore_index=True)
+            new_line = {caseIDs_col_name:[case],timestamps_col_name:[timestamp],activities_col_name:[act]}
+            df_new_row = pd.DataFrame.from_records(new_line)
+            df = pd.concat([df, df_new_row])
+            #df = df.append(new_line, ignore_index=True)
     df=df.sort_values(by=timestamps_col_name)
     #df.to_csv('Threat_to_validity_TEST'+str(number_test)+'.csv',index=False)
     return df
@@ -677,11 +674,7 @@ def comparePredicates(pred1,pred2):
 
 
 def numberTest(filename):
-    match = re.search(r'TEST(\d+)', filename)
-
-    if match:
-        numero = match.group(1)
-
-    else:
-        numero=None
-    return numero
+    filename = os.path.basename(filename)
+    filename_no_ext = os.path.splitext(filename)[0]
+    result = filename_no_ext.split('_PdFT')[0]
+    return result

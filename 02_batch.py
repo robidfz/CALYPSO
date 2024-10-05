@@ -22,10 +22,11 @@ def execute_in_parallel(register, experiment):
 
 def main():
     register = dict()
-    number_of_CI = sys.argv[5].split(',')
-    noise_inside_CI = sys.argv[6].split(',')
+    number_of_experiments=int(sys.argv[5])
+    number_of_CI = sys.argv[6].split(',')
+    noise_inside_CI = sys.argv[7].split(',')
 
-    experiments = list(product(number_of_CI, noise_inside_CI)) * 4
+    experiments = list(product(number_of_CI, noise_inside_CI)) * number_of_experiments
 
 
     with open('final_register.txt', 'a+') as dictionary_handler:

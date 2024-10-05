@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from Workflow import utils as wutils
 import numpy as np
 import seaborn as sns
+from mpl_toolkits.mplot3d import Axes3D
+from sklearn.linear_model import LinearRegression
 
 def computeFalseAndTruePositive(dataset,ground_truth):
     effects=ground_truth['Effect'].unique()
@@ -75,8 +77,10 @@ def computeMetrics(dataset,dataset_preds,ground_truth_structure,groud_truth_rule
     metrics['RECALL']=recall
     metrics['PRECISION']=precision
     metrics['RULE SCORE']=pred_score
+    dataset_h= pd.concat([dataset, dataset_preds], axis=0, ignore_index=True)
+
     for k in k_values:
-        heuristic_value=computeHeuristics(dataset, k)
+        heuristic_value=computeHeuristics(dataset_h, k)
         metrics['HEURISTIC WITH k='+str(k)] = heuristic_value
 
 
@@ -87,55 +91,171 @@ def computeMetrics(dataset,dataset_preds,ground_truth_structure,groud_truth_rule
 
 
 
-def plot(df,columns,graph_name):
-    df = df.sort_values(by=['% Cases Affected by noise','% Noise added in a single Case'], ascending=[True,True])
-    df_mean=df.groupby(['Noise %']).mean().reset_index()
-    df['# TEST'] = df.groupby('Noise %')['Noise %'].transform('count')
-    df_mean['# TEST'] = df.groupby('Noise %').size().values
-    df_mean.to_csv(graph_name+'.csv',index=False)
+def plot(df,columns,graph_name,y_attribute,filtered_attribute=None,v=None):
+
+    df = df.sort_values(by=['Noise inter-processes','Noise intra-process'], ascending=[True,True])
+    df_original=df.iloc[0]
+    df_plot = df.iloc[1:]
+    if(filtered_attribute!=None):
+        df_plot = df_plot[df_plot[filtered_attribute] == v]
+    df_plot = df_plot.groupby([y_attribute]).mean().reset_index()
 
 
-    plt.figure(figsize=(10, 6))
+    x=df_plot.shape[0]
+    if(x<10):
+        x=x+5
+    else:
+        x=x-10
+    plt.figure(figsize=(x, 8))
     colors = wutils.generate_colors(len(columns))
     n = len(columns)
-    ind = np.arange(len(df_mean['Noise %']))
-    width = 0.8 / n
+    ind = np.arange(len(df_plot[y_attribute]))
+    width = 0.4 / n
+    for i,col in enumerate(columns):
+        value=df_original[col]
+        plt.axhline(y=value, color=colors[i], linestyle='--')
+
+    data =df_plot[columns].values
 
     for j in range(n):
 
-        plt.bar(ind + j * width, df_mean[columns[j]], width, label=columns[j] , color=colors[j])
+        plt.bar(ind + j * width, df_plot[columns[j]], width, label=columns[j] , color=colors[j])
+    if(np.min(data)>0.5):
+        plt.ylim(0.5, 1)
+    else:
+        plt.ylim(0, 0.5)
 
 
-    plt.xticks(ind + width * (n - 1) / 2, df_mean['Noise %'])
+    plt.xticks(ind + width * (n - 1) / 2, df_plot[y_attribute],rotation=45)
 
-    plt.title("Bar Plot of Metrics Mean Values by Noise %")
-    plt.xlabel("(NOISE % INTER-PROCESSES, NOISE % INTRA-PROCESS)")
-    plt.ylabel("GROUP METRICS MEAN VALUE")
-    plt.legend(title="Metrics")
-    plt.savefig(graph_name+'.pdf')
+    if(v==None):
+        s="Barplot_ "+graph_name
+    else:
+        s="Barplot_ "+graph_name+"_by_"+y_attribute+"_"+str(v)
+
+    plt.xlabel(y_attribute)
+    plt.ylabel("Metrics values")
+    plt.legend(title="Metrics", loc='lower left', fontsize='small')
+    plt.savefig(s+'.pdf')
 
 
 
 def computeDeltas(dataset,columns):
     deltas_df=dataset[columns]
     deltas_df = deltas_df.sub(deltas_df.iloc[0], axis=1).abs().drop(index=0)
-    deltas_df['Noise %']=dataset['Noise %']
-    deltas_df['% Cases Affected by noise'] = dataset['% Cases Affected by noise']
-    deltas_df['% Noise added in a single Case'] = dataset['% Noise added in a single Case']
+    deltas_df['Noise ']=dataset['Noise ']
+    deltas_df['Noise inter-processes'] = dataset['Noise inter-processes']
+    deltas_df['Noise intra-process'] = dataset['Noise intra-process']
     return deltas_df
 
 
 def boxPlot(df, columns, graph_name):
 
-    df = df.sort_values(by=['% Cases Affected by noise', '% Noise added in a single Case'], ascending=[True, True])
-    df_long = pd.melt(df, id_vars=['Noise %'], value_vars=columns, var_name='Metrics', value_name='Values')
-    plt.figure(figsize=(10, 6))
-    sns.boxplot(x='Noise %', y='Values', hue='Metrics', data=df_long, palette='Set2')
-    plt.title("Box Plot of Metrics Values by Noise %")
-    plt.xlabel("(NOISE % INTER-PROCESSES, NOISE % INTRA-PROCESS)")
+    df = df.sort_values(by=['Noise inter-processes', 'Noise intra-process'], ascending=[True, True])
+    df_long = pd.melt(df, id_vars=['Noise '], value_vars=columns, var_name='Metrics', value_name='Values')
+    plt.figure(figsize=(20, 6))
+    sns.boxplot(x='Noise ', y='Values', hue='Metrics', data=df_long, palette='Set2')
+    plt.title("Box Plot of Metrics Values by Noise ")
+    plt.xlabel("(NOISE  INTER-PROCESSES, NOISE  INTRA-PROCESS)")
     plt.ylabel("GROUP METRICS MEAN VALUE")
     plt.legend(title="Metrics")
     plt.savefig('boxPlot_'+graph_name+'.pdf')
+
+
+def regressionPlane(X,Z):
+    model = LinearRegression()
+    model.fit(X, Z)
+    A, B = model.coef_
+    C = model.intercept_
+    xx, yy = np.meshgrid(np.linspace(X.iloc[:, 0].min(), X.iloc[:, 0].max(), 10),
+                         np.linspace(X.iloc[:, 1].min(), X.iloc[:, 1].max(), 10))
+    zz = A * xx + B * yy + C
+    return xx,yy,zz
+
+
+def tridimensionalPlane(df, column, original_metrics):
+    df = df.sort_values(by=['Noise inter-processes', 'Noise intra-process'], ascending=[True, True])
+
+    # Converting columns to numeric without forcing them into integers
+    df['Noise inter-processes'] = pd.to_numeric(df['Noise inter-processes'], errors='coerce')
+    df['Noise intra-process'] = pd.to_numeric(df['Noise intra-process'], errors='coerce')
+
+    X = df ['Noise intra-process','Noise inter-process']
+
+
+    planes_features = [column] + original_metrics
+    colors = wutils.generate_colors(len(planes_features))
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # For legend
+    legend_elements = []
+
+    for i, c in enumerate(planes_features):
+        Z = df[c]
+        xx, yy, zz = regressionPlane(X, Z)
+        surface = ax.plot_surface(x, yy, zz, alpha=0.5, rstride=100, cstride=100, color=colors[i])
+
+        # Add legend entry for each surface
+        legend_elements.append(plt.Line2D([0], [0], color=colors[i], lw=4, label=f'Surface regression for {c}'))
+
+    # Scatter plot of the original points
+    ax.scatter(df['Noise inter-processes'], df['Noise intra-process'], df[column], color='blue', s=50)
+
+    # Axes labels
+    ax.set_xlabel('Noise inter-processes')
+    ax.set_ylabel('Noise intra-process')
+    ax.set_zlabel(column + ' values')
+
+    ax.legend(handles=legend_elements, loc='upper left', fontsize='small',
+              bbox_to_anchor=(-0.3, 1.15))
+
+    plt.savefig(column + '_3D.pdf')
+    plt.show()
+
+def tridimensionalPlot(df, column):
+    df = df.sort_values(by=['Noise inter-processes', 'Noise intra-process'], ascending=[True, True])
+
+    # Converting columns to numeric without forcing them into integers
+    df['Noise inter-processes'] = pd.to_numeric(df['Noise inter-processes'], errors='coerce')
+    df['Noise intra-process'] = pd.to_numeric(df['Noise intra-process'], errors='coerce')
+
+    Y = df['Noise intra-process']
+    X = df['Noise inter-processes']
+
+
+
+    colors = wutils.generate_colors(len(column))
+
+
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # For legend
+    legend_elements = []
+
+    for i, c in enumerate(column):
+        Z = df[c]
+        # xx, yy, zz = regressionPlane(X, Z)
+        ax.bar3d(X, Y, Z,0.5, 0.5, 0.5, color=colors[i])
+
+        # Add legend entry for each surface
+        legend_elements.append(plt.Line2D([0], [0], color=colors[i], lw=4, label=f'Surface regression for {c}'))
+
+    # Scatter plot of the original points
+   # ax.scatter(df['Noise inter-processes'], df['Noise intra-process'], df[column], color='blue', s=50)
+
+    # Axes labels
+    ax.set_xlabel('Noise inter-processes')
+    ax.set_ylabel('Noise intra-process')
+    ax.set_zlabel('Metrics values')
+
+    ax.legend(handles=legend_elements, loc='upper left', fontsize='small',
+              bbox_to_anchor=(-0.3, 1.15))
+
+    plt.savefig( 'Metrics_3D.pdf')
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -148,7 +268,7 @@ if __name__ == "__main__":
         files_dict=wutils.file_to_dict(test_name)
         k_values=[1,2,5,7]
         classical_metrics=['ACCURACY','RECALL','PRECISION','RULE SCORE']
-        columns= ['TEST','% Cases Affected by noise','% Noise added in a single Case']
+        columns= ['TEST','Noise inter-processes','Noise intra-process']
         columns=columns+ classical_metrics
         heuristics=list()
         for k in k_values:
@@ -166,8 +286,8 @@ if __name__ == "__main__":
         deltas=dict()
         row=dict()
         row['TEST']='original_dataset'
-        row['% Cases Affected by noise']=0
-        row['% Noise added in a single Case']=0
+        row['Noise inter-processes']=0
+        row['Noise intra-process']=0
         original_dataset= pd.read_csv(file_list[0], sep=',')
         original_dataset_preds=pd.read_csv(file_list_preds[0],sep=',')
         original_metric=computeMetrics(original_dataset,original_dataset_preds,ground_truth,ground_truth_preds,k_values)
@@ -178,21 +298,32 @@ if __name__ == "__main__":
             filename=file_list[i]
             number=utils.numberTest(filename)
             row['TEST']=number
-            row['% Cases Affected by noise'] = files_dict[number][0]
-            row['% Noise added in a single Case'] = files_dict[number][1]
+            row['Noise inter-processes'] = files_dict[number][0]
+            row['Noise intra-process'] = files_dict[number][1]
             dataset = pd.read_csv(file_list[i])
             dataset_pred=pd.read_csv(file_list_preds[i])
             metrics=computeMetrics(dataset,dataset_pred,ground_truth,ground_truth_preds,k_values)
             row = row | metrics
             results.loc[len(results)] = row
-        results['Noise %'] = list(zip(results['% Cases Affected by noise'], results['% Noise added in a single Case']))
+        results['Noise '] = list(zip(results['Noise inter-processes'], results['Noise intra-process']))
         graph_name='classical_metrics'
-        plot(results,classical_metrics,graph_name)
-        boxPlot(results, classical_metrics, graph_name)
-        deltas_df=computeDeltas(results,heuristics)
-        graph_name = 'heuristics_metrics'
-        plot(deltas_df, heuristics, graph_name)
-        boxPlot(deltas_df, heuristics, graph_name)
+        plot(results,classical_metrics,graph_name,'Noise ')
+        values=results['Noise inter-processes'].unique()
+        values=values[1:]
+        for v in values:
+            plot(results, classical_metrics, graph_name, 'Noise intra-process','Noise inter-processes',v)
+        values = results['Noise intra-process'].unique()
+        values = values[1:]
+        for v in values:
+            plot(results, classical_metrics, graph_name,'Noise inter-processes', 'Noise intra-process',v)
+        tridimensionalPlot(results,['RECALL'])
+        #boxPlot(results, classical_metrics, graph_name)
+        #deltas_df=computeDeltas(results,heuristics)
+        #graph_name = 'heuristics_metrics'
+        #plot(results, heuristics, graph_name,'Noise ')
+        #boxPlot(results, heuristics, graph_name)
+        #for h in heuristics:
+            #tridimensionalPlot(results,h,classical_metrics)
         results.to_csv('accuracy.csv', index=False)
 
 

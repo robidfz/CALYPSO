@@ -22,16 +22,16 @@ def execute_in_parallel(register, experiment):
 
 def main():
     register = dict()
-    number_of_experiments=int(sys.argv[5])
-    number_of_CI = sys.argv[6].split(',')
-    noise_inside_CI = sys.argv[7].split(',')
+    number_of_processes=int(sys.argv[5])
+    number_of_experiments=int(sys.argv[6])
+    number_of_CI = sys.argv[7].split(',')
+    noise_inside_CI = sys.argv[8].split(',')
 
     experiments = list(product(number_of_CI, noise_inside_CI)) * number_of_experiments
 
 
     with open('final_register.txt', 'a+') as dictionary_handler:
-        # Esegui gli esperimenti in parallelo con 5 worker
-        with concurrent.futures.ProcessPoolExecutor(max_workers=5) as executor:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=number_of_processes) as executor:
             future_results = {executor.submit(execute_in_parallel, register, exp): exp for exp in experiments}
 
             for future in concurrent.futures.as_completed(future_results):

@@ -222,7 +222,7 @@ class Inference():
                         predicate=predicate[:index]
 
 
-                effect_obj.setTrigger(transition_effect,predicate)
+                effect_obj.setTrigger(transition_effect,predicate,eps[k])
                 row=dict()
                 row[col[0]]=effect
                 row[col[1]]=effect_obj.code

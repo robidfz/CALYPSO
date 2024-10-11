@@ -6,6 +6,7 @@ class Component:
         self.output_port='p_{'+str(self.extractPedix())+'}'
         self.states=list()
         self.transitions=list()
+        self.weights=dict()
         self.dynamics_set=dict()
         self.trigger=dict()
         self.alpha=dict()
@@ -62,9 +63,10 @@ class Component:
                 retval = threshold
         return retval
 
-    def setTrigger(self, transition,predicate):
+    def setTrigger(self, transition,predicate,weight):
         if(transition in self.transitions):
             self.trigger[transition]=predicate
+            self.weights[transition]=weight
 
 
     def setAlpha(self, transition, active_flag):

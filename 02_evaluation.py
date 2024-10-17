@@ -305,9 +305,9 @@ if __name__ == "__main__":
             metrics=computeMetrics(dataset,dataset_pred,ground_truth,ground_truth_preds,k_values)
             row = row | metrics
             results.loc[len(results)] = row
-        results['Noise '] = list(zip(results['Noise inter-processes'], results['Noise intra-process']))
+        results['Noise'] = list(zip(results['Noise inter-processes'], results['Noise intra-process']))
         graph_name='classical_metrics'
-        plot(results,classical_metrics,graph_name,'Noise ')
+        plot(results,classical_metrics,graph_name,'Noise')
         values=results['Noise inter-processes'].unique()
         values=values[1:]
         for v in values:
@@ -324,7 +324,8 @@ if __name__ == "__main__":
         #boxPlot(results, heuristics, graph_name)
         #for h in heuristics:
             #tridimensionalPlot(results,h,classical_metrics)
-        results.to_csv('accuracy.csv', index=False)
+        grouped_df = results.groupby('Noise').agg(['mean', 'var'])
+        grouped_df.to_csv('accuracy.csv', index=False)
 
 
 

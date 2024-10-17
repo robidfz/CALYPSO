@@ -17,11 +17,11 @@ def buildingDataset(df,reader,component_signal_tuple):
     activities_col_name = eval(reader['DATASET']['activities_col'])[0]
     timestamps_col_name = eval(reader['DATASET']['timestamp_col'])[0]
     #df[timestamps_col_name] = pd.to_datetime(df[timestamps_col_name])
-    df_measures = df[df[activities_col_name] == component_signal_tuple[1] + '_value_update']
-    df_measures = df_measures.head(100000)
+    df_measures = df[df[activities_col_name].str.startswith(component_signal_tuple[1])]
+    #df_measures = df_measures.head(100)
     df_errors = df[df[activities_col_name] == component_signal_tuple[0] + '_is_down']
-    df_errors = df_errors.head(1000)
-    #plottingTrends(df_measures,t[0])
+    #df_errors = df_errors.head(1)
+    plottingTrends(df_measures,t[0])
     col = eval(reader['DATASET']['new_colums'])
     df_result = pd.DataFrame(columns=col)
     counter_event_fault = 0
@@ -167,8 +167,8 @@ if __name__ == "__main__":
         file_report.write('\n\n\n')
         for j,t in enumerate(component_signals_list):
             file_report.write('RUL estimation for component '+t[0]+':\n')
-            #df_lstm=buildingDataset(df,reader,t)
-            df_lstm=pd.read_csv(t[0]+'_lstm_dataset.csv',sep=',')
+            df_lstm=buildingDataset(df,reader,t)
+            #df_lstm=pd.read_csv(t[0]+'_lstm_dataset.csv',sep=',')
             model=LSTMAlgorithm(df_lstm)
 
 

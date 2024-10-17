@@ -18,9 +18,9 @@ def buildingDataset(df,reader,component_signal_tuple):
     timestamps_col_name = eval(reader['DATASET']['timestamp_col'])[0]
     #df[timestamps_col_name] = pd.to_datetime(df[timestamps_col_name])
     df_measures = df[df[activities_col_name].str.startswith(component_signal_tuple[1])]
-    df_measures = df_measures.head(100)
+    #df_measures = df_measures.head(100)
     df_errors = df[df[activities_col_name] == component_signal_tuple[0] + '_is_down']
-    df_errors = df_errors.head(1)
+    #df_errors = df_errors.head(1)
     plottingTrends(df_measures,t[0])
     col = eval(reader['DATASET']['new_colums'])
     df_result = pd.DataFrame(columns=col)
